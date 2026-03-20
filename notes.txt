@@ -1,0 +1,38 @@
+CFMiX CPC Batch Converter - Notes
+===================================
+
+WHAT THIS DOES
+--------------
+cpcBatchConverter.py reads PDF certificates from the ./certificates folder,
+sends each one to the Claude AI API, and saves the extracted data as JSON
+files in the ./json_output folder.
+
+
+BEFORE RUNNING THE SCRIPT
+--------------------------
+You need an Anthropic API key. Get one at: https://console.anthropic.com/
+
+1. THe file anthropicKey.txt contains the CPC_Convert2JSON key which is not backed up on git.
+2. Run the script:
+
+    python cpcBatchConverter.py
+
+NOTE: anthropicKey.txt is listed in .gitignore so it will NOT be uploaded to GitHub.
+
+
+Requirements:
+
+pip install anthropic
+
+FOLDER STRUCTURE
+----------------
+cpcConvert2json/
+  cpcBatchConverter.py   <- the script
+  notes.txt              <- this file
+  certificates/          <- put your PDF files here (create if missing)
+  json_output/           <- JSON results will appear here (auto-created)
+
+
+REMINDER
+--------
+anthropicKey.txt is ignored by git — never commit your API key to version control.
