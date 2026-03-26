@@ -32,12 +32,16 @@ pip install pdfplumber
 FOLDER STRUCTURE
 ----------------
 cpcConvert2json/
-  cpcBatchConverter.py   <- the script
-  notes.txt              <- this file
-  certificates/          <- put your PDF files here (create if missing)
-  json_output/           <- JSON results will appear here (auto-created)
-
+  cpcConvert.py   <- the script
+  cpcMerge.py     <- combines all of hte page_# files into the json_output file
+  cpcCount.py     <- ounts the commodities in each individual page_*.json file and shows a per-page breakdown.
+  cpcPdfCheck.py  <- scans each page of a certificate PDF and reports whether it's: text-searchable, scanned image or both text and scanned.
+  notes.txt       <- this file
+  certificates/   <- put your PDF files here (create if missing)
+  json_output/    <- JSON results will appear here (auto-created)
+  page_output/    <- page.001 through the page-### that was converted one page at a time
 
 REMINDER
 --------
 anthropicKey.txt is ignored by git — never commit your API key to version control.
+/docs/Instructions4Claude is a cloud folder copy that Claude Code uses to remember the status and preferences of my conversations.  Not intended for my use but I chose to back it up here.

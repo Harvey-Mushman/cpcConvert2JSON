@@ -7,7 +7,6 @@ certificates/
 json_output/
 page_output/
 conversion_log.txt
-label_comparison_report.txt
 
 # Backups
 BkUp/
