@@ -1,0 +1,96 @@
+{
+  "county": "SAN DIEGO",
+  "generated_date": "2026-03-22",
+  "form_revision": "51-049M (REV 01/15)",
+  "extraction_method": "text_based",
+  "notes": "San Diego CPCs are almost entirely free text. Two pdfplumber tables appear: (1) page 1 production site table (each cell = one site block), (2) pages 2+ commodity table with all column headers squished into the first cell of row 0. Certificate header, producer info, authorized counties, authorized reps, and producers_i_sell_for are all parsed from page text.",
+
+  "page_repeat_prefixes": [],
+
+  "certificate_fields_from_text": {
+    "ISSUING COUNTY":  "issuing_county",
+    "CERTIFICATE NO":  "certificate_number",
+    "COUNTY FEE":      "county_fee",
+    "ISSUING DATE":    "issuing_date",
+    "EXPIRATION DATE": "expiration_date",
+    "AMENDED DATE":    "amended_date",
+    "COPIES ISSUED":   "certified_copies_made"
+  },
+
+  "producer_fields_from_text": {
+    "Name":          "name",
+    "DBA":           "dba",
+    "Address":       "address",
+    "City, St. Zip": "city_state_zip",
+    "Phone (1)":     "phone_business",
+    "Phone (2)":     "phone_cell",
+    "Email":         "email"
+  },
+
+  "text_sections": {
+    "storage_locations": {
+      "start": "STORAGE LOCATION(s) MONTHS IN STORAGE",
+      "end": "Name(s) of the Producer(s) that the",
+      "maps_to": "storage_locations",
+      "parser": "lines"
+    },
+    "producers_i_sell_for": {
+      "start": "Certificate Holder May Sell FOR: Certificate No Date Declared",
+      "end": "Name(s) of the Producer(s) Authorized to sell",
+      "maps_to": "producers_i_sell_for",
+      "skip_if_text": "NONE",
+      "parser": "tabular_lines",
+      "columns": ["name", "certificate_number", "date_declared"]
+    },
+    "authorized_representatives_for_me": {
+      "start": "for this Certificate Holder : Certificate No Date Declared",
+      "end": "AUTHORIZED COUNTY(ies)",
+      "maps_to": "producers_selling_for_me",
+      "skip_if_text": "NONE",
+      "parser": "tabular_lines",
+      "columns": ["name", "certificate_number", "date_declared"]
+    },
+    "authorized_counties": {
+      "start": "permitted only in the authorized counties listed on this certificate",
+      "end": "AUTHORIZED REPRESENTATIVE(s):",
+      "maps_to": "authorized_counties",
+      "parser": "comma_list"
+    },
+    "authorized_representatives": {
+      "start": "AUTHORIZED REPRESENTATIVE(s):",
+      "end": "I have reviewed this certificate",
+      "maps_to": "authorized_representatives",
+      "parser": "comma_list"
+    }
+  },
+
+  "table_patterns": {
+    "production_sites_table": {
+      "detection": "first_cell_regex",
+      "pattern": "^\\d+-?\\s*.+APN",
+      "type": "production_sites_cells",
+      "cell_pattern": "(\\d+)-?\\s*(.+?)\\s+APN\\s+([\\d\\-\\[\\]/]+)\\s+--\\s+([\\d.]+)\\s+ACRES",
+      "fields": ["site_number", "address", "apn", "acreage"],
+      "maps_to": "production_sites"
+    },
+    "commodity_table": {
+      "detection": "first_cell_contains",
+      "contains": "Location #",
+      "type": "positional",
+      "skip_rows": 1,
+      "columns": {
+        "0": "site",
+        "1": "commodity",
+        "2": "variety",
+        "3": "amount_grown",
+        "4": "amount_unit",
+        "5": "est_production",
+        "6": "production_unit",
+        "7": "harvest_season",
+        "8": "season_altering_device",
+        "9": "months_in_storage"
+      },
+      "maps_to": "commodities"
+    }
+  }
+}

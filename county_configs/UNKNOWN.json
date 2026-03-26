@@ -1,0 +1,100 @@
+{
+  "county": "UNKNOWN",
+  "generated_date": "2026-03-24",
+  "notes": "No table names or page 1 text were provided for this county. This is a skeleton config based on common California CPC patterns. All field labels, table names, and mappings are placeholders derived from the standard schema and should be verified against actual documents from this county.",
+  "page_repeat_prefixes": [
+    "Certified Producer:"
+  ],
+  "certificate_fields_from_text": {
+    "Issuing County": "issuing_county",
+    "Certificate Number": "certificate_number",
+    "Issue Date": "issuing_date",
+    "Expiration Date": "expiration_date",
+    "Amended Date": "amended_date",
+    "Copies Issued": "certified_copies_made",
+    "County Fee": "county_fee"
+  },
+  "tables": {
+    "Producer Information": {
+      "type": "key_value",
+      "maps_to": "producer",
+      "field_map": {
+        "Certified Producer": "name",
+        "Farm or Ranch Name": "farm_name",
+        "DBA": "dba",
+        "Business Address": "address",
+        "City": "city",
+        "State": "state",
+        "Zip": "zip_code",
+        "Phone Number": "phone_business",
+        "Cell Phone": "phone_cell",
+        "Fax": "fax",
+        "E-mail": "email"
+      }
+    },
+    "Certification": {
+      "type": "ignore"
+    },
+    "Production Site Information": {
+      "type": "data_table",
+      "maps_to": "production_sites",
+      "column_map": {
+        "Production Site #": "site_number",
+        "Address": "address",
+        "City": "city",
+        "State": "state",
+        "Zip": "zip_code",
+        "Site Acreage": "acreage"
+      }
+    },
+    "Storage Location Information": {
+      "type": "data_table",
+      "maps_to": "storage_locations",
+      "column_map": {
+        "Storage Location": "location_id",
+        "Address": "address",
+        "City": "city",
+        "State": "state",
+        "Zip": "zip_code"
+      }
+    },
+    "Authorized Counties Where Commodities May Be Sold": {
+      "type": "list",
+      "maps_to": "authorized_counties"
+    },
+    "Names of Producers I am authorized to sell for": {
+      "type": "data_table",
+      "header_row": 0,
+      "maps_to": "producers_i_sell_for",
+      "column_map": {
+        "Names of Producers I am authorized to sell for": "name",
+        "Certificate Numbers": "certificate_number",
+        "Date Declared": "date_declared"
+      }
+    },
+    "Names of Producers authorized to sell for me": {
+      "type": "data_table",
+      "header_row": 0,
+      "maps_to": "producers_selling_for_me",
+      "column_map": {
+        "Names of Producers authorized to sell for me": "name",
+        "Certificate Numbers": "certificate_number",
+        "Date Declared": "date_declared"
+      }
+    },
+    "Commodities": {
+      "type": "data_table",
+      "maps_to": "commodities",
+      "column_map": {
+        "Production Site #": "site",
+        "Commodity": "commodity",
+        "Variety / Type": "variety",
+        "Amount / Unit Grown": "amount_grown",
+        "Estimated Yearly Production": "est_production",
+        "Harvest Season": "harvest_season",
+        "Season Altering Device": "season_altering_device",
+        "Months in Storage": "months_in_storage"
+      }
+    }
+  }
+}

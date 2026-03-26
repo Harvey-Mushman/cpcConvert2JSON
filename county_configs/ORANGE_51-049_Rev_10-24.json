@@ -1,0 +1,111 @@
+{
+  "county": "ORANGE",
+  "generated_date": "2026-03-23",
+  "form_revision": "51-049 (Rev 10/24)",
+  "page_repeat_prefixes": [
+    "Certified Producer:"
+  ],
+  "certificate_fields_from_text": {
+    "ISSUING COUNTY": "issuing_county",
+    "CERTIFICATE NUMBER": "certificate_number",
+    "ISSUE DATE": "issuing_date",
+    "EXPIRATION DATE": "expiration_date",
+    "AMENDED DATE": "amended_date",
+    "COPIES ISSUED": "certified_copies_made"
+  },
+  "tables": {
+    "Producer Information": {
+      "type": "key_value",
+      "maps_to": "producer",
+      "field_map": {
+        "Certified Producer": "name",
+        "Farm or Ranch Name": "farm_name",
+        "DBA": "dba",
+        "Business Address": "address",
+        "Phone Number": "phone_business",
+        "E-mail": "email"
+      }
+    },
+    "Certification": {
+      "type": "ignore"
+    },
+    "Production Site Information": {
+      "type": "data_table",
+      "maps_to": "production_sites",
+      "column_map": {
+        "Production Site #": "site_number",
+        "Address": "address",
+        "City": "city",
+        "State": "state",
+        "Zip": "zip_code",
+        "Site Acreage": "acreage"
+      }
+    },
+    "Storage Location Information": {
+      "type": "data_table",
+      "maps_to": "storage_locations",
+      "column_map": {
+        "Storage Location": "location_id",
+        "Address": "address",
+        "City": "city",
+        "State": "state",
+        "Zip": "zip_code"
+      }
+    },
+    "Authorized Counties Where Commodities May Be Sold": {
+      "type": "list",
+      "maps_to": "authorized_counties"
+    },
+    "Selling for Another Certified Producer": {
+      "type": "data_table",
+      "maps_to": "producers_i_sell_for",
+      "column_map": {
+        "Names of Producers I am authorized to sell for": "name",
+        "Certificate Numbers": "certificate_number",
+        "Date Declared": "date_declared"
+      }
+    },
+    "Names of Producers authorized to sell for me": {
+      "type": "data_table",
+      "header_row": 0,
+      "maps_to": "producers_selling_for_me",
+      "column_map": {
+        "Names of Producers authorized to sell for me": "name",
+        "Certificate Numbers": "certificate_number",
+        "Date Declared": "date_declared"
+      }
+    },
+    "Commodities": {
+      "type": "data_table",
+      "maps_to": "commodities",
+      "column_map": {
+        "Production Site #": "site",
+        "Commodity": "commodity",
+        "Variety / Type": "variety",
+        "Amount / Unit Grown": "amount_grown",
+        "Estimated Yearly Production": "est_production",
+        "Harvest Season": "harvest_season",
+        "Season Altering Device": "season_altering_device",
+        "Months in Storage": "months_in_storage"
+      }
+    }
+  },
+  "table_patterns": {
+    "storage_location_continuation": {
+      "detection": "first_cell_regex",
+      "pattern": "^[A-Z]{1,2}$",
+      "type": "positional",
+      "skip_rows": 0,
+      "columns": {
+        "0": "location_id",
+        "1": "address",
+        "2": "city",
+        "3": "state",
+        "4": "zip_code"
+      },
+      "maps_to": "storage_locations"
+    }
+  },
+
+  "notes": "Orange County CPC format closely mirrors Los Angeles County. Certificate header info is free text on page 1. Page repeat tables on pages 2+ start with 'Certified Producer:' and are caught by page_repeat_prefixes — no need to list individual producer names in the tables config. Under the gray 'Selling for Another Certified Producer' band there are two sub-tables: the band row itself is the producers_i_sell_for data table, and the next table is authorized_representatives. County fee not present in header text for this county."
+}

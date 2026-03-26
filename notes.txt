@@ -15,14 +15,19 @@ You need an Anthropic API key. Get one at: https://console.anthropic.com/
 1. THe file anthropicKey.txt contains the CPC_Convert2JSON key which is not backed up on git.
 2. Run the script:
 
-    python cpcBatchConverter.py
+    python cpcConvert.py
+    python cpcMerge.py
 
 NOTE: anthropicKey.txt is listed in .gitignore so it will NOT be uploaded to GitHub.
 
+Activate Python Enviroment
+(venv) PS C:\Users\hm\Documents\CFMiX\cpcConvert2json>
 
 Requirements:
 
 pip install anthropic
+pip install pdfplumber
+
 
 FOLDER STRUCTURE
 ----------------

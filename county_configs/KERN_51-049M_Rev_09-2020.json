@@ -1,0 +1,108 @@
+{
+  "county": "KERN",
+  "generated_date": "2026-03-23",
+  "form_revision": "51-049M (Rev 09/2020)",
+  "notes": "Kern County form has several non-standard structures. Certificate header garbles due to two-column PDF overlap; only EXPIRATION DATE, AMENDED DATE, CERTIFIED COPIES MADE, and ISSUING COUNTY are readable from text. Producer info is free text. Production sites are a 4-column paired grid with no title row (first cell is the first site). Storage locations have no title row; each cell contains 'Storage Location (X): address'. Authorized counties are a multi-cell grid with no title row; first cell is the first county name. Producers/reps are a single 6-column split table. Commodity table has no title row — SITE # IS the header row.",
+
+  "certificate_header_type": "kern_dual_column",
+
+  "page_repeat_prefixes": [
+    "I have reviewed this certificate",
+    "FOR OFFICIAL USE ONLY"
+  ],
+
+  "additional_stop_labels": ["ZIP CODE", "RECEIPT #"],
+
+  "certificate_fields_from_text": {
+    "ISSUING COUNTY":        "issuing_county",
+    "EXPIRATION DATE":       "expiration_date",
+    "AMENDED DATE":          "amended_date",
+    "CERTIFIED COPIES MADE": "certified_copies_made"
+  },
+
+  "producer_fields_from_text": {
+    "NAME":                "name",
+    "FARM OR RANCH NAME":  "farm_name",
+    "DBA (If Applicable)": "dba",
+    "ADDRESS":             "address",
+    "CITY":                "city_state_zip",
+    "PHONE: (cell)":       "phone_cell",
+    "PHONE: (bus.)":       "phone_business",
+    "Email Address":       "email"
+  },
+
+  "tables": {
+
+    "Name(s) of Producer(s) I am authorized to sell for": {
+      "type": "split_data_table",
+      "left": {
+        "maps_to": "producers_i_sell_for",
+        "columns": [0, 1, 2],
+        "column_map": {
+          "Name(s) of Producer(s) I am authorized to sell for": "name",
+          "Certificate Number": "certificate_number",
+          "Date Declared":      "date_declared"
+        },
+        "skip_values": ["NONE"]
+      },
+      "right": {
+        "maps_to": "producers_selling_for_me",
+        "columns": [3, 4, 5],
+        "column_map": {
+          "Name(s) of the Producer(s) Authorized to sell for": "name",
+          "Certificate Number": "certificate_number",
+          "Date Declared":      "date_declared"
+        },
+        "skip_values": ["NONE"]
+      }
+    },
+
+    "SITE #": {
+      "type": "data_table",
+      "header_row": 0,
+      "maps_to": "commodities",
+      "column_map": {
+        "SITE #":  "site",
+        "COMMODITY": "commodity",
+        "COMMODITY (List in Alphabetical Order by Common Name)": "commodity",
+        "VARIETY/TYPE":          "variety",
+        "AMOUNT/UNIT GROWN":     "amount_grown",
+        "EST. PRODUCTION":       "est_production",
+        "EST. PRODUCTION (POUNDS)": "est_production",
+        "HARVEST SEASON":        "harvest_season",
+        "SEASON ALTERING DEVICE": "season_altering_device",
+        "MONTHS IN STORAGE":     "months_in_storage",
+        "MONTS IN STORAGE":      "months_in_storage"
+      }
+    }
+
+  },
+
+  "table_patterns": {
+
+    "production_sites_table": {
+      "detection":    "first_cell_regex",
+      "pattern":      "^\\d+\\.?\\s",
+      "type":         "paired_sites",
+      "desc_pattern": "^(\\d+)\\.?\\s*(.+)$",
+      "maps_to":      "production_sites"
+    },
+
+    "storage_locations_table": {
+      "detection":    "first_cell_contains",
+      "contains":     "Storage Location (",
+      "type":         "location_cells",
+      "cell_pattern": "Storage Location\\s*\\(([^)]+)\\)\\s*[:\\s]+(.+)",
+      "maps_to":      "storage_locations"
+    },
+
+    "authorized_counties_table": {
+      "detection": "first_cell_regex",
+      "pattern":   "^[A-Z][a-z]+(?:\\s[A-Z][a-z]*)*$",
+      "type":      "list",
+      "skip_title_row": false,
+      "maps_to":   "authorized_counties"
+    }
+
+  }
+}
