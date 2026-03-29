@@ -45,3 +45,43 @@ REMINDER
 --------
 anthropicKey.txt is ignored by git — never commit your API key to version control.
 /docs/Instructions4Claude is a cloud folder copy that Claude Code uses to remember the status and preferences of my conversations.  Not intended for my use but I chose to back it up here.
+
+
+THe import from Ventura was created from their Access system and exoported as XLS filetype.  Here is the format:
+
+layout:
+
+Col	Field
+0	issuing_county
+1	certificate_number
+2	(internal ID — skip)
+3	producer name (contact)
+4	issuing_date (Excel serial)
+5	farm_name
+6	expiration_date (Excel serial)
+7-8	address (col 8 is overflow)
+9	city
+10	zip_code
+11	county_fee
+12	phone_business
+13	phone_cell
+14-18	production_sites (up to 5, "N/A" = empty)
+19	(unused — always N/A)
+20	storage_location
+21	authorized_counties_count (?)
+22	additional storage location
+Commodities in columns 24-29: row_num, crop, acres, season, volume, location_code
+
+(VENTURA_51-049_Rev_10-24.json) for the XLSX form layout (like Shigeru)
+Build extract_xls_access_export() — reads the flat row-0 + commodity rows
+Build extract_xlsx_form_based() 
+
+All 5 files processed successfully:
+File	              Format	        Commodities
+Cuyama Orchards	    Access export 	35
+Gourmet Specialties	Access export 	98
+Harry's Berries	    Access export	  19
+Lily's Eggs	        Access export	  31
+Shigeru Nursery	    State form XLSX	76
+
+

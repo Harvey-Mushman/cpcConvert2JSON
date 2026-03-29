@@ -5,6 +5,16 @@ import re
 from pathlib import Path
 from datetime import datetime
 
+try:
+    import xlrd
+except ImportError:
+    xlrd = None
+
+try:
+    import openpyxl
+except ImportError:
+    openpyxl = None
+
 api_key = Path("anthropicKey.txt").read_text().strip()
 client = anthropic.Anthropic(api_key=api_key)
 
@@ -859,18 +869,325 @@ Output only raw JSON, no commentary.
     raw = clean_json_response(response.content[0].text)
     return json.loads(raw)
 
+# ── XLS/XLSX EXTRACTION ──────────────────────────────────────────
+
+def excel_serial_to_date(serial):
+    """Convert Excel serial number to date string MM/DD/YYYY."""
+    if not serial:
+        return ""
+    try:
+        serial = float(serial)
+        dt = xlrd.xldate_as_datetime(int(serial), 0)
+        return dt.strftime("%m/%d/%Y")
+    except (ValueError, TypeError, OverflowError):
+        return str(serial)
+
+def detect_xls_format(file_path):
+    """Auto-detect which XLS config to use based on sheet name and structure.
+    Returns (config_dict, config_path) or (None, None)."""
+    suffix = file_path.suffix.lower()
+
+    if suffix == ".xls":
+        if not xlrd:
+            log("  ERROR: xlrd not installed. Run: pip install xlrd")
+            return None, None
+        wb = xlrd.open_workbook(str(file_path), on_demand=True)
+        sheet_names = wb.sheet_names()
+        # Check for Access export format (sheet named "Crops")
+        if "Crops" in sheet_names:
+            sheet = wb.sheet_by_name("Crops")
+            row1 = [str(sheet.cell(1, c).value) if c < sheet.ncols else ""
+                    for c in range(min(sheet.ncols, 6))]
+            if "CERTNUMBER" in row1 or "Combo239" in row1:
+                config_path = COUNTY_CONFIGS_FOLDER / "VENTURA_ACCESS_EXPORT.json"
+                if config_path.exists():
+                    return json.loads(config_path.read_text()), config_path
+        # Fallback: try county-based config
+        return None, None
+
+    elif suffix == ".xlsx":
+        if not openpyxl:
+            log("  ERROR: openpyxl not installed. Run: pip install openpyxl")
+            return None, None
+        wb = openpyxl.load_workbook(str(file_path), read_only=True, data_only=True)
+        sheet_names = wb.sheetnames
+        # Check for state form format (sheet named "PrintCPCertificate")
+        if "PrintCPCertificate" in sheet_names:
+            sheet = wb["PrintCPCertificate"]
+            # Read cell that should contain certificate info block
+            cell_val = sheet.cell(5, 21).value  # row 4, col 20 (0-indexed) → openpyxl row 5, col 21
+            wb.close()
+            if cell_val and "ISSUING COUNTY" in str(cell_val):
+                # Detect county from certificate block
+                m = re.search(r'ISSUING COUNTY[:\s]+([A-Za-z][A-Za-z\s]+?)(?:\n|$)', str(cell_val), re.IGNORECASE)
+                county = m.group(1).strip().upper() if m else "UNKNOWN"
+                # Try county-specific state form config
+                config_path = COUNTY_CONFIGS_FOLDER / f"{county}_51-049_Rev_10-24.json"
+                if config_path.exists():
+                    return json.loads(config_path.read_text()), config_path
+                # Try LA config as fallback (same state form)
+                config_path = COUNTY_CONFIGS_FOLDER / "LOS ANGELES_51-049_Rev_10-24.json"
+                if config_path.exists():
+                    config = json.loads(config_path.read_text())
+                    config["format_type"] = "xlsx_state_form"
+                    return config, config_path
+        wb.close()
+        return None, None
+
+    return None, None
+
+def extract_xls_access_export(file_path, config):
+    """Extract CPC data from Ventura-style Access export XLS file.
+    All certificate data is in row 0, commodities in rows 4+."""
+    result = {}
+    skip_val = config.get("skip_value", "N/A")
+    col_map = config.get("header_column_map", {})
+    date_cols = config.get("date_columns", [])
+
+    wb = xlrd.open_workbook(str(file_path), on_demand=True)
+    sheet_name = config.get("sheet_name", "Crops")
+    sheet = wb.sheet_by_name(sheet_name)
+
+    # Extract header fields from row 0
+    producer = {}
+    for col_str, field_name in col_map.items():
+        col = int(col_str)
+        if col >= sheet.ncols:
+            continue
+        value = sheet.cell(0, col).value
+        if value is None or str(value).strip().upper() == skip_val:
+            value = ""
+        else:
+            value = str(value).strip()
+            # Convert Excel serial dates
+            if col in date_cols and value:
+                value = excel_serial_to_date(value)
+            # Clean up numeric strings (e.g. "30.0" → "30")
+            if value.endswith(".0") and value[:-2].isdigit():
+                value = value[:-2]
+
+        if field_name.startswith("producer."):
+            producer[field_name.replace("producer.", "")] = value
+        else:
+            result[field_name] = value
+
+    # Clean zip code trailing spaces/dashes
+    if "zip_code" in producer:
+        producer["zip_code"] = producer["zip_code"].rstrip("- ")
+    if producer:
+        result["producer"] = producer
+
+    # Extract production sites from cols 14-18
+    site_cols = config.get("production_site_columns", [14, 15, 16, 17, 18])
+    sites = []
+    for i, col in enumerate(site_cols, start=1):
+        if col >= sheet.ncols:
+            continue
+        value = str(sheet.cell(0, col).value or "").strip()
+        if value and value.upper() != skip_val:
+            sites.append({
+                "site_number": str(i).zfill(2),
+                "description": value
+            })
+    if sites:
+        result["production_sites"] = sites
+
+    # Extract storage locations from cols 20, 22
+    storage_cols = config.get("storage_location_columns", [20, 22])
+    locations = []
+    for i, col in enumerate(storage_cols):
+        if col >= sheet.ncols:
+            continue
+        value = str(sheet.cell(0, col).value or "").strip()
+        if value and value.upper() != skip_val:
+            loc_id = chr(65 + i)  # A, B, C...
+            locations.append({
+                "location_id": loc_id,
+                "address": value
+            })
+    if locations:
+        result["storage_locations"] = locations
+
+    # Extract commodities from rows 4+
+    comm_col_map = config.get("commodity_column_map", {})
+    header_rows = set(config.get("commodity_header_rows", [3, 25]))
+    start_row = config.get("commodity_start_row", 4)
+    commodities = []
+
+    for row_idx in range(start_row, sheet.nrows):
+        # Skip commodity header repeat rows
+        if row_idx in header_rows:
+            continue
+        # Check if row has commodity data (col 25 = crop name)
+        crop_col = 25
+        for col_str in comm_col_map:
+            if comm_col_map[col_str] == "commodity":
+                crop_col = int(col_str)
+                break
+        crop_value = str(sheet.cell(row_idx, crop_col).value or "").strip()
+        if not crop_value:
+            continue
+
+        entry = {}
+        for col_str, field_name in comm_col_map.items():
+            col = int(col_str)
+            if col >= sheet.ncols:
+                continue
+            if field_name == "row_number":
+                continue  # skip the row counter column
+            value = str(sheet.cell(row_idx, col).value or "").strip()
+            # Clean non-breaking spaces
+            value = value.replace("\xa0", " ").strip()
+            entry[field_name] = value
+        commodities.append(entry)
+
+    if commodities:
+        result["commodities"] = commodities
+
+    log(f"  Extracted {len(commodities)} commodities from Access export")
+    return result
+
+def extract_xlsx_state_form(file_path, config):
+    """Extract CPC data from state-form XLSX file (e.g. Shigeru Nursery).
+    Form-based layout with labeled rows and sections."""
+    result = {}
+
+    wb = openpyxl.load_workbook(str(file_path), data_only=True)
+    sheet_name = config.get("sheet_name", "PrintCPCertificate")
+    sheet = wb[sheet_name]
+
+    # Helper: get cell value (openpyxl is 1-indexed)
+    def cell(row, col):
+        v = sheet.cell(row + 1, col + 1).value
+        if v is None:
+            return ""
+        return str(v).strip()
+
+    # Extract certificate fields from multi-line text block
+    cert_cfg = config.get("certificate_cell", {})
+    cert_row = cert_cfg.get("row", 4)
+    cert_col = cert_cfg.get("col", 19)
+    cert_text = cell(cert_row, cert_col)
+    if cert_text:
+        for pattern_label, field_name in config.get("certificate_field_patterns", {}).items():
+            m = re.search(re.escape(pattern_label) + r'[:\s]+([^\n]*)', cert_text, re.IGNORECASE)
+            if m:
+                value = m.group(1).strip()
+                result[field_name] = value
+
+    # Process each section
+    sections = config.get("sections", {})
+
+    # Build a map of row contents for quick section detection
+    max_row = sheet.max_row
+    max_col = sheet.max_column
+    row_cache = {}
+    for r in range(max_row):
+        for c in range(max_col):
+            v = cell(r, c)
+            if v:
+                row_cache.setdefault(r, {})[c] = v
+
+    # Find section start rows by searching for marker text
+    # Use exact match (cell value starts with marker) to avoid false positives
+    # e.g. "Commodities" must not match "Authorized Counties Where Commodities May Be Sold"
+    section_starts = {}
+    for section_name, section_cfg in sections.items():
+        marker = section_cfg.get("marker", "")
+        if not marker:
+            continue
+        for r, cols in row_cache.items():
+            for c, v in cols.items():
+                if v.strip() == marker or v.strip().startswith(marker + "\n"):
+                    section_starts[section_name] = r
+                    break
+            if section_name in section_starts:
+                break
+
+    # Sort sections by row position
+    ordered_sections = sorted(section_starts.items(), key=lambda x: x[1])
+
+    for idx, (section_name, start_row) in enumerate(ordered_sections):
+        section_cfg = sections[section_name]
+        section_type = section_cfg.get("type", "")
+        # Determine end row (next section or end of sheet)
+        end_row = ordered_sections[idx + 1][1] if idx + 1 < len(ordered_sections) else max_row
+
+        if section_type == "key_value_rows":
+            label_col = section_cfg.get("label_col", 1)
+            value_col = section_cfg.get("value_col", 14)
+            field_map = section_cfg.get("field_map", {})
+            data = {}
+            for r in range(start_row + 1, end_row):
+                label = cell(r, label_col)
+                value = cell(r, value_col)
+                if label in field_map:
+                    # Handle multi-line address
+                    clean_val = re.sub(r'\s+', ' ', value).strip() if value else ""
+                    data[field_map[label]] = clean_val
+            if data:
+                result[section_name] = data
+
+        elif section_type == "data_table_rows":
+            header_labels = section_cfg.get("header_labels", {})
+            col_positions = {int(k): v for k, v in header_labels.items()}
+            # data_offset: 2 = marker row + header row + data (default)
+            #              1 = marker IS the header, data starts next row
+            data_offset = section_cfg.get("data_offset", 2)
+            data_start = start_row + data_offset
+            rows = []
+            for r in range(data_start, end_row):
+                entry = {}
+                has_data = False
+                for col_pos, field_name in col_positions.items():
+                    value = cell(r, col_pos)
+                    value = value.replace("\xa0", " ").strip() if value else ""
+                    entry[field_name] = value
+                    if value:
+                        has_data = True
+                if has_data:
+                    rows.append(entry)
+            if rows:
+                result[section_name] = rows
+
+        elif section_type == "comma_list":
+            data_col = section_cfg.get("data_col", 3)
+            items = []
+            for r in range(start_row + 1, end_row):
+                value = cell(r, data_col)
+                if value:
+                    for item in re.split(r'[,\n]+', value):
+                        item = item.strip()
+                        if item:
+                            items.append(item)
+            if items:
+                result[section_name] = items
+
+    wb.close()
+    commodity_count = len(result.get("commodities", []))
+    log(f"  Extracted {commodity_count} commodities from state form XLSX")
+    return result
+
 # ── MAIN ─────────────────────────────────────────────────────────
 
 pdf_folder = Path("./certificates")
 page_output_folder = Path("./page_output")
 page_output_folder.mkdir(exist_ok=True)
 
-all_files = sorted(pdf_folder.glob("*.pdf"))
+all_files = sorted(
+    list(pdf_folder.glob("*.pdf")) +
+    list(pdf_folder.glob("*.xls")) +
+    list(pdf_folder.glob("*.xlsx")),
+    key=lambda f: f.name.lower()
+)
+# Exclude subdirectories' files — only top-level certificates folder
+all_files = [f for f in all_files if f.parent == pdf_folder]
+
 if not all_files:
-    print("No PDF files found in ./certificates")
+    print("No PDF/XLS/XLSX files found in ./certificates")
     exit()
 
-print("Which PDF to convert?")
+print("Which file to convert?")
 print("  0 - Process ALL files")
 for i, f in enumerate(all_files, start=1):
     print(f"  {i} - {f.name}")
@@ -889,8 +1206,40 @@ log(f"\n{'='*60}")
 log(f"CONVERSION RUN: {run_time}")
 log(f"{'='*60}")
 
-for pdf_file in files:
-    log(f"\nFILE: {pdf_file.name}")
+for input_file in files:
+    log(f"\nFILE: {input_file.name}")
+    file_ext = input_file.suffix.lower()
+
+    # ── XLS/XLSX PATH ──────────────────────────────────────────
+    if file_ext in (".xls", ".xlsx"):
+        xls_config, config_file = detect_xls_format(input_file)
+        if not xls_config:
+            log(f"  ERROR: No config found for this spreadsheet format. Skipping.")
+            continue
+        log(f"  Format: {xls_config.get('format_type', 'unknown')}")
+        log(f"  Config: {config_file.name}")
+
+        format_type = xls_config.get("format_type", "")
+        if format_type == "xls_access_export":
+            data = extract_xls_access_export(input_file, xls_config)
+        elif format_type == "xlsx_state_form":
+            data = extract_xlsx_state_form(input_file, xls_config)
+        else:
+            log(f"  ERROR: Unknown format_type '{format_type}'. Skipping.")
+            continue
+
+        # XLS files produce a single output (no pages)
+        file_page_folder = page_output_folder / input_file.stem
+        file_page_folder.mkdir(exist_ok=True)
+        page_file = file_page_folder / "page_001.json"
+        page_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        total_commodities = len(data.get("commodities", []))
+        log(f"  TOTAL: {total_commodities} commodities")
+        log(f"\n  Done. Run cpcMerge.py to combine into final JSON.")
+        continue
+
+    # ── PDF PATH (existing logic) ──────────────────────────────
+    pdf_file = input_file
 
     with pdfplumber.open(pdf_file) as pdf:
         page1_text = pdf.pages[0].extract_text() or ""
@@ -923,14 +1272,11 @@ for pdf_file in files:
 
     if county_config:
         log(f"  County config: loaded ({config_file.name})")
-        # If this is a generic (non-revision) config and we now know the revision,
-        # record it so future runs can detect changes
         if form_revision and not county_config.get("form_revision"):
             county_config["form_revision"] = form_revision
             config_file.write_text(json.dumps(county_config, indent=2, ensure_ascii=False))
             log(f"  Form revision recorded in config: {form_revision}")
     else:
-        # Determine the filename for the new config
         if form_revision:
             rev_part = revision_to_filename_part(form_revision)
             new_config_file = COUNTY_CONFIGS_FOLDER / f"{county}_{rev_part}.json"

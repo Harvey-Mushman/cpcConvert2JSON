@@ -1,0 +1,42 @@
+{
+  "county": "VENTURA",
+  "generated_date": "2026-03-29",
+  "format_type": "xls_access_export",
+  "notes": "Ventura County Access database export format (.xls). All certificate data is in row 0 with positional columns. Commodities start at row 4 in columns 24-29. Row 1 has internal field names. Row 3 and row 25 have commodity column headers (page-break markers). Dates are Excel serial numbers. Production sites in cols 14-18 (up to 5, N/A = empty). Storage locations in cols 20 and 22 (N/A = empty). Col 19 appears unused. Col 21 appears to be authorized counties count or months.",
+
+  "sheet_name": "Crops",
+
+  "header_row": 0,
+  "header_column_map": {
+    "0":  "issuing_county",
+    "1":  "certificate_number",
+    "3":  "producer.name",
+    "4":  "issuing_date",
+    "5":  "producer.farm_name",
+    "6":  "expiration_date",
+    "7":  "producer.address",
+    "9":  "producer.city",
+    "10": "producer.zip_code",
+    "11": "county_fee",
+    "12": "producer.phone_business",
+    "13": "producer.phone_cell"
+  },
+
+  "date_columns": [4, 6],
+
+  "production_site_columns": [14, 15, 16, 17, 18],
+  "storage_location_columns": [20, 22],
+
+  "skip_value": "N/A",
+
+  "commodity_start_row": 4,
+  "commodity_header_rows": [3, 25],
+  "commodity_column_map": {
+    "24": "row_number",
+    "25": "commodity",
+    "26": "amount_grown",
+    "27": "harvest_season",
+    "28": "est_production",
+    "29": "site"
+  }
+}

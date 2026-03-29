@@ -1,0 +1,104 @@
+{
+  "county": "VENTURA",
+  "generated_date": "2026-03-29",
+  "form_revision": "51-049 (Rev 10/24)",
+  "format_type": "xlsx_state_form",
+  "notes": "Ventura County state form format (.xlsx). Same form as LA County 51-049 (Rev 10/24) but rendered as an Excel spreadsheet with labeled rows instead of PDF tables. Data is spread across merged cells with section headers. Certificate info is in a multi-line text block. Producer info, production sites, storage locations, sell-for, and commodities use labeled row sections.",
+
+  "sheet_name": "PrintCPCertificate",
+
+  "certificate_cell": {"row": 4, "col": 20},
+  "certificate_field_patterns": {
+    "ISSUING COUNTY": "issuing_county",
+    "CERTIFICATE NUMBER": "certificate_number",
+    "ISSUE DATE": "issuing_date",
+    "EXPIRATION DATE": "expiration_date",
+    "AMENDED DATE": "amended_date",
+    "COPIES ISSUED": "certified_copies_made"
+  },
+
+  "sections": {
+    "producer": {
+      "marker": "Producer Information",
+      "type": "key_value_rows",
+      "label_col": 2,
+      "value_col": 15,
+      "field_map": {
+        "Certified Producer": "name",
+        "Farm or Ranch Name": "farm_name",
+        "DBA": "dba",
+        "Business Address": "address",
+        "Phone Number": "phone_business",
+        "E-mail": "email"
+      }
+    },
+
+    "production_sites": {
+      "marker": "Production Site Information",
+      "type": "data_table_rows",
+      "header_labels": {
+        "2": "site_number",
+        "6": "address",
+        "10": "city",
+        "18": "state",
+        "23": "zip_code",
+        "28": "acreage"
+      }
+    },
+
+    "storage_locations": {
+      "marker": "Storage Location Information",
+      "type": "data_table_rows",
+      "header_labels": {
+        "4": "location_id",
+        "7": "address",
+        "14": "city",
+        "21": "state",
+        "27": "zip_code"
+      }
+    },
+
+    "authorized_counties": {
+      "marker": "Authorized Counties Where Commodities May Be Sold",
+      "type": "comma_list",
+      "data_col": 4
+    },
+
+    "producers_i_sell_for": {
+      "marker": "Names of Producers I am authorized to sell for",
+      "type": "data_table_rows",
+      "data_offset": 1,
+      "header_labels": {
+        "2": "name",
+        "13": "certificate_number",
+        "24": "date_declared"
+      }
+    },
+
+    "producers_selling_for_me": {
+      "marker": "Names of Producers authorized to sell for me",
+      "type": "data_table_rows",
+      "data_offset": 1,
+      "header_labels": {
+        "4": "name",
+        "11": "certificate_number",
+        "25": "date_declared"
+      }
+    },
+
+    "commodities": {
+      "marker": "Commodities",
+      "type": "data_table_rows",
+      "header_labels": {
+        "4": "site",
+        "5": "commodity",
+        "8": "variety",
+        "12": "amount_grown",
+        "17": "est_production",
+        "22": "harvest_season",
+        "26": "season_altering_device",
+        "29": "months_in_storage"
+      }
+    }
+  }
+}
