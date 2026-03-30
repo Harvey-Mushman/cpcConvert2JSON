@@ -5,21 +5,54 @@ page_output_folder = Path("./page_output")
 json_output_folder = Path("./json_output")
 json_output_folder.mkdir(exist_ok=True)
 
+cert_folder = Path("./certificates")
 all_folders = sorted([f for f in page_output_folder.iterdir() if f.is_dir()])
 if not all_folders:
     print("No page_output folders found. Run cpcConvert.py first.")
     exit()
 
-print("Which CPC to merge?")
-print("  0 - Merge ALL")
-for i, f in enumerate(all_folders, start=1):
-    print(f"  {i} - {f.name}")
+# Determine which page_output folders have a matching file in certificates/
+cert_files = set()
+if cert_folder.exists():
+    for f in cert_folder.iterdir():
+        if f.is_file() and f.suffix.lower() in (".pdf", ".xls", ".xlsx"):
+            cert_files.add(f.stem)
 
-choice = input("Enter number: ").strip()
+new_folders = [f for f in all_folders if f.name in cert_files]
+prior_folders = [f for f in all_folders if f.name not in cert_files]
+
+# Build the menu
+print("Which CPC to merge?")
+idx = 1
+
+if new_folders:
+    print(f"\n  --- New (in certificates/) ---")
+    print(f"  0 - Merge ALL new ({len(new_folders)} files)")
+    new_start = idx
+    for f in new_folders:
+        print(f"  {idx} - {f.name}")
+        idx += 1
+
+if prior_folders:
+    print(f"\n  --- Prior runs (not in certificates/) ---")
+    prior_start = idx
+    for f in prior_folders:
+        print(f"  {idx} - {f.name}")
+        idx += 1
+
+total = idx - 1
+choice = input("\nEnter number: ").strip()
 if choice == "0":
-    folders = all_folders
-elif choice.isdigit() and 1 <= int(choice) <= len(all_folders):
-    folders = [all_folders[int(choice) - 1]]
+    if new_folders:
+        folders = new_folders
+    else:
+        print("No new CPCs found in certificates/. Exiting.")
+        exit()
+elif choice.isdigit() and 1 <= int(choice) <= total:
+    # Map choice number back to the correct folder
+    c = int(choice)
+    combined = new_folders + prior_folders
+    folders = [combined[c - 1]]
 else:
     print("Invalid choice. Exiting.")
     exit()

@@ -49,6 +49,9 @@ anthropicKey.txt is ignored by git — never commit your API key to version cont
 
 THe import from Ventura was created from their Access system and exoported as XLS filetype.  Here is the format:
 
+VENTURA_ACCESS_EXPORT.json — config for .xls Access database exports (positional column mapping)
+VENTURA_51-049_Rev_10-24.json — config for .xlsx state form (section-based with labeled rows)
+
 layout:
 
 Col	Field
@@ -85,3 +88,4 @@ Lily's Eggs	        Access export	  31
 Shigeru Nursery	    State form XLSX	76
 
 
+Santa Barbara very simular to San Diego but different.  PDF files in text-searchable format.  They need a new config file.

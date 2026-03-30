@@ -1,0 +1,81 @@
+{
+  "county": "TULARE",
+  "generated_date": "2026-03-29",
+  "form_revision": "51-049M (Rev. 05/2022)",
+  "notes": "Tulare County uses form 51-049M. Producer info is in a single cell with inline labels. Production sites have address + acreage in single cells. Storage locations have address + Storage Location (letter) in single cells. Commodities are single-cell rows with space-separated fields. Authorized counties span multiple columns with parenthetical numbers. Second certificates table has sell-for and sell-for-me side by side.",
+
+  "page_repeat_prefixes": [],
+
+  "certificate_fields_from_text": {
+    "Issuing County": "issuing_county",
+    "Certificate Number": "certificate_number",
+    "Issue Date": "issuing_date",
+    "Expiration Date": "expiration_date",
+    "Amended Date": "amended_date",
+    "Copies Issued": "certified_copies_made",
+    "County Fee": "county_fee"
+  },
+
+  "tables": {
+    "FOR OFFICIAL USE ONLY": {
+      "type": "ignore"
+    },
+
+    "PRODUCER INFORMATION": {
+      "type": "tulare_producer",
+      "maps_to": "producer",
+      "field_map": {
+        "Name of Producer": "name",
+        "Farm or Ranch Name": "farm_name",
+        "DBA (Doing Business As - If Applicable)": "dba",
+        "Producer\u2019s Mailing Address": "address",
+        "City": "city",
+        "State": "state",
+        "Zip": "zip_code",
+        "Phone Number": "phone_business",
+        "2nd Phone Number": "phone_cell",
+        "Email": "email"
+      }
+    },
+
+    "VERIFICATION/SIGNATURES": {
+      "type": "ignore"
+    },
+
+    "PRODUCTION SITE INFORMATION": {
+      "type": "tulare_production_sites",
+      "maps_to": "production_sites"
+    },
+
+    "STORAGE LOCATION": {
+      "type": "tulare_storage",
+      "maps_to": "storage_locations"
+    },
+
+    "COMMODITIES": {
+      "type": "tulare_commodities",
+      "maps_to": "commodities",
+      "skip_value": "N/A"
+    },
+
+    "AUTHORIZED COUNTIES": {
+      "type": "tulare_auth_counties",
+      "maps_to": "authorized_counties"
+    },
+
+    "AUTHORIZED REPRESENTATIVES": {
+      "type": "tulare_auth_reps",
+      "maps_to": "authorized_representatives"
+    }
+  },
+
+  "table_patterns": {
+    "counties_and_second_certs": {
+      "detection": "first_cell_regex",
+      "pattern": "^[A-Z]+\\s*\\(\\d+\\)",
+      "type": "tulare_counties_and_certs",
+      "skip_value": "N/A",
+      "maps_to": "authorized_counties"
+    }
+  }
+}

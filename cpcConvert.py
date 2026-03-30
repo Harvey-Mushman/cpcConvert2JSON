@@ -278,6 +278,287 @@ def process_certificate_fields(table, table_cfg):
                 result[standard_key] = value
     return result
 
+def process_tulare_producer_from_page(page, table_cfg):
+    """Parse Tulare-style producer table using char-level extraction from the page.
+    The producer table has values and labels at specific x-positions."""
+    producer = {}
+    chars = page.chars
+    from collections import defaultdict
+
+    # Group chars into lines by y position
+    buckets = defaultdict(list)
+    for c in chars:
+        buckets[round(c['top'] / 12) * 12].append(c)
+
+    def get_text_at(y_key, x_min, x_max):
+        line_chars = [c for c in buckets.get(y_key, []) if c['x0'] >= x_min and c['x0'] < x_max]
+        return ''.join(c['text'] for c in sorted(line_chars, key=lambda c: c['x0'])).strip()
+
+    def get_groups(y_key, gap=8):
+        line_chars = sorted(buckets.get(y_key, []), key=lambda c: c['x0'])
+        groups = []
+        current = ""
+        current_x0 = None
+        prev_x1 = None
+        for ch in line_chars:
+            g = ch['x0'] - prev_x1 if prev_x1 is not None else 0
+            if g > gap and current:
+                groups.append((current_x0, current.strip()))
+                current = ch['text']
+                current_x0 = ch['x0']
+            else:
+                if current_x0 is None:
+                    current_x0 = ch['x0']
+                current += ch['text']
+            prev_x1 = ch['x1']
+        if current:
+            groups.append((current_x0, current.strip()))
+        return groups
+
+    # Find key label lines by searching for known text
+    label_ys = {}
+    for y_key in sorted(buckets.keys()):
+        text = ''.join(c['text'] for c in sorted(buckets[y_key], key=lambda c: c['x0']))
+        if "Name of Producer" in text:
+            label_ys["name_label"] = y_key
+        if "Farm or Ranch Name" in text:
+            label_ys["farm_label"] = y_key
+        if "Mailing Address" in text:
+            label_ys["address_label"] = y_key
+        if "Phone Number" in text and "2nd" in text:
+            label_ys["phone_label"] = y_key
+
+    sorted_ys = sorted(buckets.keys())
+
+    # Producer name: line before "Name of Producer" label
+    if "name_label" in label_ys:
+        prev_y = max(y for y in sorted_ys if y < label_ys["name_label"])
+        groups = get_groups(prev_y)
+        producer["name"] = groups[0][1] if groups else ""
+
+    # Farm name + DBA: values on "Name of Producer" label line (right side) + continuation
+    if "name_label" in label_ys and "farm_label" in label_ys:
+        groups = get_groups(label_ys["name_label"])
+        # Farm name is at right side (x > 300)
+        farm_parts = [g[1] for g in groups if g[0] > 300]
+        # Check continuation lines between name_label and farm_label
+        for y_key in sorted_ys:
+            if label_ys["name_label"] < y_key < label_ys["farm_label"]:
+                cont_groups = get_groups(y_key)
+                farm_parts.extend([g[1] for g in cont_groups if g[0] > 300])
+        farm_text = " ".join(farm_parts).strip().strip("/").strip()
+        if "/" in farm_text:
+            parts = farm_text.split("/", 1)
+            producer["farm_name"] = parts[0].strip()
+            producer["dba"] = parts[1].strip()
+        else:
+            producer["farm_name"] = farm_text
+
+    # Address/City/State/Zip: line before "Mailing Address" label
+    if "address_label" in label_ys:
+        prev_y = max(y for y in sorted_ys if y < label_ys["address_label"])
+        groups = get_groups(prev_y)
+        if len(groups) >= 4:
+            producer["address"] = groups[0][1]
+            producer["city"] = groups[1][1]
+            producer["state"] = groups[2][1]
+            producer["zip_code"] = groups[3][1]
+        elif len(groups) >= 1:
+            producer["address"] = " ".join(g[1] for g in groups)
+
+    # Phone/2nd Phone/Email: line before "Phone Number" label
+    if "phone_label" in label_ys:
+        prev_y = max(y for y in sorted_ys if y < label_ys["phone_label"])
+        groups = get_groups(prev_y)
+        if len(groups) >= 3:
+            producer["phone_number"] = groups[0][1]
+            producer["2nd_phone_number"] = groups[1][1]
+            producer["email"] = groups[2][1]
+        elif len(groups) == 2:
+            producer["phone_number"] = groups[0][1]
+            if "@" in groups[1][1]:
+                producer["email"] = groups[1][1]
+            else:
+                producer["2nd_phone_number"] = groups[1][1]
+        elif len(groups) == 1:
+            producer["phone_number"] = groups[0][1]
+
+    # Ensure all standard producer fields are present
+    for field in ("name", "farm_name", "dba", "address", "city", "state",
+                  "zip_code", "phone_number", "2nd_phone_number", "email"):
+        producer.setdefault(field, "")
+
+    return producer
+
+def process_tulare_production_sites(table, table_cfg):
+    """Parse Tulare-style production site table.
+    Each row is one cell: 'ADDRESS, CITY ACREAGE\\nAddress of Production Site N [DATE] Site Acreage'"""
+    sites = []
+    for row in table[1:]:
+        if not row or not row[0]:
+            continue
+        cell = normalize(row[0])
+        # Extract site number from "Address of Production Site N"
+        m = re.search(r'Address of Production Site\s+(\d+)', cell)
+        if not m:
+            continue
+        site_num = m.group(1)
+        # Extract acreage from before "Site Acreage" (or after optional date)
+        # Text before "Address of Production Site" contains the address and acreage
+        before = cell[:cell.find("Address of Production Site")].strip()
+        # Last token(s) may be acreage
+        acreage_m = re.search(r'([\d.]+)\s*$', before)
+        acreage = acreage_m.group(1) if acreage_m else ""
+        address = before[:acreage_m.start()].strip().rstrip(",") if acreage_m else before
+        sites.append({
+            "site_number": site_num,
+            "address": address,
+            "acreage": acreage
+        })
+    return sites
+
+def process_tulare_storage(table, table_cfg):
+    """Parse Tulare-style storage location table.
+    Each row is one cell: 'ADDRESS\\nStorage Location (A)'"""
+    locations = []
+    for row in table[1:]:
+        if not row or not row[0]:
+            continue
+        cell = row[0]
+        m = re.search(r'Storage Location\s*\(([A-Z])\)', cell)
+        if not m:
+            continue
+        loc_id = m.group(1)
+        address = cell[:m.start()].replace("\n", " ").strip()
+        locations.append({"location_id": loc_id, "address": address})
+    return locations
+
+def process_tulare_commodities(table, table_cfg):
+    """Parse Tulare-style commodity table.
+    Row 0 = title, Row 1 = header, Rows 2+ = space-separated data in single cells.
+    Format: SITE COMMODITY [VARIETY] AMOUNT UNIT EST_PROD UNIT SEASON DEVICE MONTHS
+    Variety may be missing or multi-word. Parse from right (fixed fields) then left."""
+    commodities = []
+    for row in table[2:]:  # skip title + header
+        if not row or not row[0]:
+            continue
+        cell = normalize(row[0])
+        if not cell or not cell[0].isdigit():
+            continue
+
+        # Parse from right: MONTHS DEVICE SEASON EST_UNIT EST_NUM AMT_UNIT AMT_NUM
+        # Then remaining text = SITE COMMODITY [VARIETY]
+        m = re.match(
+            r'^(\d{1,2})\s+'                        # site
+            r'(.+?)\s+'                              # commodity + variety (greedy middle)
+            r'([\d.]+)\s+'                           # amount number
+            r'([A-Z]+)\s+'                           # amount unit
+            r'([\d.]+)\s+'                           # est_production number
+            r'([A-Z]+)\s+'                           # est_production unit
+            r'([A-Z]{3,}-[A-Z]{3,}|ALL\s+YEAR)\s+'  # harvest season
+            r'(\S+)\s+'                              # season_altering_device
+            r'(\d+)'                                 # months_in_storage
+            r'(.*)$',                                # trailing text (variety overflow)
+            cell
+        )
+        if m:
+            site = m.group(1)
+            name_block = m.group(2).strip()
+            trailing = m.group(10).strip()
+
+            # Split commodity from variety: first word is commodity, rest is variety
+            # But commodity can be multi-word (e.g. "FIG BLACK")
+            # Heuristic: commodity is the first word, variety is the rest
+            # Unless there's no variety (single word like "BLACKBERRY")
+            words = name_block.split()
+            commodity = words[0] if words else ""
+            variety = " ".join(words[1:]) if len(words) > 1 else ""
+
+            # If there's trailing text after months_in_storage, it's variety overflow
+            if trailing:
+                variety = (variety + " " + trailing).strip() if variety else trailing
+
+            # Clean variety of wrapping artifacts
+            variety = re.sub(r'[()]', '', variety).strip().strip(',').strip()
+
+            device = m.group(8)
+            if device.upper() == "NONE":
+                device = ""
+
+            commodities.append({
+                "site": site,
+                "commodity": commodity,
+                "variety": variety,
+                "amount_grown": f"{m.group(3)} {m.group(4)}",
+                "est_production": f"{m.group(5)} {m.group(6)}",
+                "harvest_season": m.group(7),
+                "season_altering_device": device,
+                "months_in_storage": m.group(9)
+            })
+    return commodities
+
+def process_tulare_second_certs(table, table_cfg):
+    """Parse Tulare-style second certificates table.
+    Rows contain sell-for and sell-for-me side by side.
+    All rows are included even if values are N/A."""
+    result = {"producers_i_sell_for": [], "producers_selling_for_me": []}
+    # Find the data rows (after header rows)
+    data_start = 0
+    for i, row in enumerate(table):
+        if row and row[0] and "Name of Producer" in str(row[0]):
+            data_start = i + 1
+            break
+    for row in table[data_start:]:
+        if not row or len(row) < 8:
+            continue
+        # Left side: sell for (cols 0, 2, 3)
+        name = normalize(row[0]) if row[0] else ""
+        cert = normalize(row[2]) if len(row) > 2 and row[2] else ""
+        date = normalize(row[3]) if len(row) > 3 and row[3] else ""
+        if name:
+            result["producers_i_sell_for"].append({
+                "name": name, "certificate_number": cert, "date_declared": date
+            })
+        # Right side: sell for me (cols 5, 6, 7)
+        name2 = normalize(row[5]) if len(row) > 5 and row[5] else ""
+        cert2 = normalize(row[6]) if len(row) > 6 and row[6] else ""
+        date2 = normalize(row[7]) if len(row) > 7 and row[7] else ""
+        if name2:
+            result["producers_selling_for_me"].append({
+                "name": name2, "certificate_number": cert2, "date_declared": date2
+            })
+    return result
+
+def process_tulare_auth_counties(table, table_cfg):
+    """Parse Tulare-style authorized counties table (multi-column with parenthetical numbers)."""
+    counties = []
+    for row in table[1:]:  # skip title
+        for cell in row:
+            if not cell:
+                continue
+            name = normalize(cell).strip()
+            if name and name != "SECOND CERTIFICATES":
+                counties.append(name)
+    return counties
+
+def process_tulare_auth_reps(table, table_cfg):
+    """Parse Tulare-style authorized representatives table.
+    Returns objects with last_name, first_name, phone_number."""
+    reps = []
+    for row in table[2:]:  # skip title + header
+        if not row:
+            continue
+        last = normalize(row[0]) if row[0] else ""
+        first = normalize(row[1]) if len(row) > 1 and row[1] else ""
+        phone = normalize(row[2]) if len(row) > 2 and row[2] else ""
+        if last or first:
+            reps.append({
+                "last_name": last,
+                "first_name": first,
+                "phone_number": phone
+            })
+    return reps
+
 def extract_cert_fields_from_text(page_text, config):
     """Extract certificate fields from page text using regex.
     Stops at end of line; skips empty values."""
@@ -378,6 +659,54 @@ def extract_text_sections(page_text, config):
                     entry[col] = parts[i].strip() if i < len(parts) else ""
                 rows.append(entry)
             result[maps_to] = rows
+        elif parser == "regex_lines":
+            # Parse each line with a regex, mapping capture groups to field names
+            line_pattern = section_cfg.get("line_pattern", "")
+            columns = section_cfg.get("columns", [])
+            skip_header = section_cfg.get("skip_header_rows", 0)
+            rows = []
+            lines = section_text.splitlines()
+            for line in lines[skip_header:]:
+                line = line.strip()
+                if not line:
+                    continue
+                m = re.match(line_pattern, line)
+                if m:
+                    entry = {}
+                    for i, col in enumerate(columns):
+                        val = m.group(i + 1).strip() if i + 1 <= len(m.groups()) else ""
+                        if col != "_skip":
+                            entry[col] = val
+                    rows.append(entry)
+            if rows:
+                result.setdefault(maps_to, []).extend(rows)
+        elif parser == "numbered_sites":
+            # Parse "1. addr 2. addr 3. 4." inline numbered format
+            # Use regex to find "N. text" where text is a real address (contains letters)
+            flat = re.sub(r'\s+', ' ', section_text.replace("\n", " ")).strip()
+            matches = re.findall(r'(\d{1,2})\.\s+((?:(?!\s\d{1,2}\.).)+)', flat)
+            sites = []
+            for num, addr in matches:
+                addr = addr.strip().rstrip(",. ").strip()
+                # Skip if addr is just digits or empty (empty site slot)
+                if addr and re.search(r'[a-zA-Z]', addr):
+                    sites.append({"site_number": num, "description": addr})
+            if sites:
+                result[maps_to] = sites
+        elif parser == "lettered_sites":
+            # Parse "A. addr B. addr C. addr D." inline lettered format
+            # All listed letters are included, even if address is empty
+            flat = re.sub(r'\s+', ' ', section_text.replace("\n", " ")).strip()
+            # Split on letter-dot pattern (A-D only — CPC forms have max 4 slots)
+            parts = re.split(r'\b([A-D])\.\s*', flat)
+            locations = []
+            # parts: ['', 'A', 'addr...', 'B', 'addr or empty', ...]
+            for i in range(1, len(parts) - 1, 2):
+                letter = parts[i]
+                addr = parts[i + 1].strip().rstrip(",. ").strip() if i + 1 < len(parts) else ""
+                locations.append({"location_id": letter, "address": addr})
+            if locations:
+                result[maps_to] = locations
     return result
 
 def process_production_sites_cells(table, table_pattern_cfg):
@@ -603,6 +932,55 @@ def match_table_pattern(table, pattern_cfg):
 
 # ── PAGE EXTRACTION ──────────────────────────────────────────────
 
+def extract_commodities_by_char_position(page, config):
+    """Extract commodity data from free-text lines using character x-positions.
+    Used for Santa Barbara and similar counties where commodity data is in
+    text lines with positional columns that pdfplumber collapses to single spaces."""
+    col_boundaries = config.get("commodity_column_boundaries", [])
+    if not col_boundaries:
+        return []
+
+    chars = page.chars
+    # Identify commodity lines: find ':' chars at x < 45, y > min_y
+    min_y = config.get("commodity_min_y", 300)
+    colon_chars = sorted(
+        [c for c in chars if c['text'] == ':' and c['x0'] < 45 and c['top'] > min_y],
+        key=lambda c: c['top']
+    )
+
+    commodities = []
+    for cc in colon_chars:
+        y = cc['top']
+        line_chars = sorted(
+            [ch for ch in chars if abs(ch['top'] - y) < 3],
+            key=lambda ch: ch['x0']
+        )
+
+        # Check this is a commodity line (starts with digits + colon)
+        prefix = ''.join(ch['text'] for ch in line_chars if ch['x0'] < cc['x1'] + 3)
+        if not re.match(r'\d+:', prefix.strip()):
+            continue
+
+        # Extract text at each column boundary
+        entry = {}
+        for col_cfg in col_boundaries:
+            field = col_cfg["field"]
+            x_min = col_cfg["x_min"]
+            x_max = col_cfg["x_max"]
+            col_chars = [ch for ch in line_chars if ch['x0'] >= x_min and ch['x0'] < x_max]
+            value = ''.join(ch['text'] for ch in col_chars).strip()
+            if field != "_skip":
+                entry[field] = value
+
+        # Ensure all standard commodity fields present
+        for std_field in ("site", "commodity", "variety", "amount_grown",
+                          "est_production", "harvest_season",
+                          "season_altering_device", "months_in_storage"):
+            entry.setdefault(std_field, "")
+        commodities.append(entry)
+
+    return commodities
+
 def extract_page_table_based(page, county_config):
     """Standard table-based extraction (most counties)."""
     result = {}
@@ -693,6 +1071,47 @@ def extract_page_table_based(page, county_config):
             data = process_split_data_table(table, table_cfg)
             result.update(data)
 
+        elif table_type == "tulare_producer":
+            data = process_tulare_producer_from_page(page, table_cfg)
+            result[maps_to] = data
+
+        elif table_type == "tulare_production_sites":
+            data = process_tulare_production_sites(table, table_cfg)
+            result.setdefault(maps_to, []).extend(data)
+
+        elif table_type == "tulare_storage":
+            data = process_tulare_storage(table, table_cfg)
+            result.setdefault(maps_to, []).extend(data)
+
+        elif table_type == "tulare_commodities":
+            data = process_tulare_commodities(table, table_cfg)
+            result.setdefault(maps_to, []).extend(data)
+
+        elif table_type == "tulare_second_certs":
+            data = process_tulare_second_certs(table, table_cfg)
+            for key, rows in data.items():
+                result.setdefault(key, []).extend(rows)
+
+        elif table_type == "tulare_counties_and_certs":
+            # Combo table: row 0 = overflow counties, rest = second certificates
+            if table[0]:
+                for cell in table[0]:
+                    if cell:
+                        name = normalize(cell).strip()
+                        if name:
+                            result.setdefault("authorized_counties", []).append(name)
+            data = process_tulare_second_certs(table, table_cfg)
+            for key, rows in data.items():
+                result.setdefault(key, []).extend(rows)
+
+        elif table_type == "tulare_auth_counties":
+            data = process_tulare_auth_counties(table, table_cfg)
+            result.setdefault(maps_to, []).extend(data)
+
+        elif table_type == "tulare_auth_reps":
+            data = process_tulare_auth_reps(table, table_cfg)
+            result.setdefault(maps_to, []).extend(data)
+
         else:
             # Not a named table — try table_patterns before flagging as unknown
             pattern_matched = False
@@ -724,6 +1143,17 @@ def extract_page_table_based(page, county_config):
                         result.setdefault(maps_to, []).extend(data)
                         log(f"    INFO: Positional table '{_pname}' matched"
                             f" ({len(data)} rows → {maps_to})", also_print=False)
+                elif ptype == "tulare_counties_and_certs":
+                    # Combo table: row 0 = overflow counties, rest = second certificates
+                    if table[0]:
+                        for cell in table[0]:
+                            if cell:
+                                name = normalize(cell).strip()
+                                if name:
+                                    result.setdefault("authorized_counties", []).append(name)
+                    data = process_tulare_second_certs(table, pattern_cfg)
+                    for key, rows in data.items():
+                        result.setdefault(key, []).extend(rows)
                 elif ptype == "ignore":
                     pass
                 break
@@ -775,6 +1205,12 @@ def extract_page_text_based(page, county_config):
     for key, value in sections.items():
         result[key] = value
 
+    # Character-position commodity extraction (Santa Barbara style)
+    if county_config.get("commodity_column_boundaries"):
+        commodities = extract_commodities_by_char_position(page, county_config)
+        if commodities:
+            result.setdefault("commodities", []).extend(commodities)
+
     # Table pattern matching
     table_patterns = county_config.get("table_patterns", {})
     for table in tables:
@@ -798,6 +1234,12 @@ def extract_page_text_based(page, county_config):
                     else:
                         result.setdefault(maps_to, []).extend(data)
             break  # matched — no need to check more patterns for this table
+
+    # Ensure all standard list fields are present (empty arrays if not extracted)
+    for list_field in ("production_sites", "storage_locations", "authorized_counties",
+                       "producers_i_sell_for", "producers_selling_for_me",
+                       "authorized_representatives", "commodities"):
+        result.setdefault(list_field, [])
 
     return result
 
@@ -1039,10 +1481,24 @@ def extract_xls_access_export(file_path, config):
             # Clean non-breaking spaces
             value = value.replace("\xa0", " ").strip()
             entry[field_name] = value
+        # Ensure all standard commodity fields are present (empty if not in this format)
+        for std_field in ("site", "commodity", "variety", "amount_grown",
+                          "est_production", "harvest_season",
+                          "season_altering_device", "months_in_storage"):
+            entry.setdefault(std_field, "")
         commodities.append(entry)
 
     if commodities:
         result["commodities"] = commodities
+
+    # Ensure all standard schema fields are present (empty if not in this format)
+    result.setdefault("authorized_counties", [])
+    result.setdefault("producers_i_sell_for", [])
+    result.setdefault("producers_selling_for_me", [])
+    result.setdefault("authorized_representatives", [])
+    result.setdefault("commodities", [])
+    result.setdefault("amended_date", "")
+    result.setdefault("certified_copies_made", "")
 
     log(f"  Extracted {len(commodities)} commodities from Access export")
     return result

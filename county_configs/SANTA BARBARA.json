@@ -1,0 +1,85 @@
+{
+  "county": "SANTA BARBARA",
+  "generated_date": "2026-03-29",
+  "extraction_method": "text_based",
+  "notes": "Santa Barbara CPCs are text-based. Certificate header fields are in a two-column free-text layout. Producer info uses NAME:/DBA:/ADDRESS:/CITY:/PHONE: labels. Production sites are numbered inline (1. addr 2. addr). Storage locations are lettered inline (A. addr B. addr). Commodities are positional text columns extracted via character x-positions. Authorized counties and sell-for info appear on the last page after LAST ENTRY marker. Phone labels: (res.) = cell, (bus.) = business.",
+
+  "page_repeat_prefixes": [],
+
+  "certificate_fields_from_text": {
+    "ISSUING COUNTY": "issuing_county",
+    "CERTIFICATE NO.": "certificate_number",
+    "COUNTY FEE": "county_fee",
+    "ISSUING DATE": "issuing_date",
+    "EXPIRATION DATE": "expiration_date",
+    "AMENDED DATE": "amended_date",
+    "COPIES ISSUED": "certified_copies_made"
+  },
+
+  "producer_fields_from_text": {
+    "NAME": "name",
+    "DBA": "dba",
+    "ADDRESS": "address",
+    "CITY": "city_state_zip",
+    "PHONE:(res.)": "phone_cell",
+    "PHONE: (bus.)": "phone_business"
+  },
+
+  "additional_stop_labels": ["CERTIFICATE NO.", "COUNTY FEE", "ISSUING DATE", "EXPIRATION DATE", "AMENDED DATE", "COPIES ISSUED"],
+
+  "tables": {
+    "FOR OFFICIAL USE ONLY": {
+      "type": "ignore"
+    }
+  },
+
+  "table_patterns": {},
+
+  "text_sections": {
+    "production_sites": {
+      "start": "PRODUCTION SITES(s)",
+      "end": "STORAGE LOCATION(s)",
+      "maps_to": "production_sites",
+      "parser": "numbered_sites"
+    },
+    "storage_locations": {
+      "start": "STORAGE LOCATION(s)",
+      "end": "# SITE",
+      "maps_to": "storage_locations",
+      "parser": "lettered_sites"
+    },
+    "authorized_counties": {
+      "start": "listed on this certifticate.",
+      "end": "Name(s) of the Producer(s)",
+      "maps_to": "authorized_counties",
+      "parser": "comma_list"
+    },
+    "producers_i_sell_for": {
+      "start": "Certificate Holder May Sell FOR: CERTIFICATE NO.",
+      "end": "I have reviewed this certificate",
+      "maps_to": "producers_i_sell_for",
+      "skip_if_text": "SELL the Certificate",
+      "parser": "tabular_lines",
+      "columns": ["name", "certificate_number"]
+    },
+    "producers_selling_for_me": {
+      "start": "SELL the Certificate Holder's Product: CERTIFICATE NO.",
+      "end": "I have reviewed this certificate",
+      "maps_to": "producers_selling_for_me",
+      "parser": "tabular_lines",
+      "columns": ["name", "certificate_number"]
+    }
+  },
+
+  "commodity_column_boundaries": [
+    {"field": "_skip",                  "x_min": 0,   "x_max": 40},
+    {"field": "site",                   "x_min": 40,  "x_max": 73},
+    {"field": "commodity",              "x_min": 73,  "x_max": 200},
+    {"field": "amount_grown",           "x_min": 200, "x_max": 278},
+    {"field": "harvest_season",         "x_min": 278, "x_max": 323},
+    {"field": "est_production",         "x_min": 323, "x_max": 409},
+    {"field": "season_altering_device", "x_min": 409, "x_max": 514},
+    {"field": "months_in_storage",      "x_min": 514, "x_max": 600}
+  ],
+  "commodity_min_y": 200
+}
