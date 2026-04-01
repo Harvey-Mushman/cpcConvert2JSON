@@ -1,0 +1,108 @@
+{
+  "notes": "Gold standard normalization config. All county configs inherit from this file. County configs can override any section. Based on San Diego CPC as the reference format.",
+
+  "standard_certificate_fields": [
+    "issuing_county",
+    "certificate_number",
+    "county_fee",
+    "issuing_date",
+    "expiration_date",
+    "amended_date",
+    "certified_copies_made"
+  ],
+
+  "standard_producer_fields": [
+    "name",
+    "farm_name",
+    "dba",
+    "address",
+    "city",
+    "state",
+    "zip_code",
+    "phone_business",
+    "phone_alternate",
+    "email"
+  ],
+
+  "standard_commodity_fields": [
+    "site",
+    "commodity",
+    "variety",
+    "amount_grown",
+    "amount_unit",
+    "est_production",
+    "production_unit",
+    "harvest_season",
+    "season_altering_device",
+    "months_in_storage"
+  ],
+
+  "standard_list_fields": [
+    "production_sites",
+    "storage_locations",
+    "authorized_counties",
+    "authorized_representatives",
+    "producers_i_sell_for",
+    "producers_selling_for_me",
+    "commodities"
+  ],
+
+  "unit_map": {
+    "LB": "Lbs", "LBS": "Lbs", "LBS.": "Lbs", "POUND": "Lbs", "POUNDS": "Lbs",
+    "TON": "Ton", "TONS": "Ton",
+    "TREE": "Tree", "TREES": "Tree",
+    "PLANT": "Plant", "PLANTS": "Plant",
+    "VINE": "Vine", "VINES": "Vine",
+    "BUSH": "Bush", "BUSHES": "Bush",
+    "HEN": "Hen", "HENS": "Hen",
+    "HIVE": "Hive", "HIVES": "Hive",
+    "DUCK": "Duck", "DUCKS": "Duck",
+    "GOOSE": "Goose", "GEESE": "Goose",
+    "POT": "Pot", "POTS": "Pot",
+    "TRAY": "Tray", "TRAYS": "Tray",
+    "ACRE": "Acre", "ACRES": "Acre",
+    "SQ FT": "Sq Ft", "SQUARE FEET": "Sq Ft", "SQ FEET": "Sq Ft",
+    "STEM": "Stem", "STEMS": "Stem",
+    "BUNCH": "Bunch", "BUNCHES": "Bunch",
+    "BUNDLE": "Bundle", "BUNDLES": "Bundle",
+    "BASKET": "Basket", "BASKETS": "Basket",
+    "BOX": "Box", "BOXES": "Box",
+    "FLAT": "Flat", "FLATS": "Flat",
+    "DOZEN": "Dozen", "DOZ": "Dozen",
+    "STALK": "Stalk", "STALKS": "Stalk",
+    "GAL": "Gal",
+    "ROW": "Row", "ROWS": "Row",
+    "FT": "Ft", "FEET": "Ft", "FOOT": "Ft",
+    "SQ FT ROW": "Sq Ft Row", "SQ FT ROWS": "Sq Ft Row",
+    "ROW FT": "Row Ft"
+  },
+
+  "empty_value_skip_list": ["NONE", "---", "N/A", "NA", "0", ""],
+
+  "street_suffixes": [
+    "St", "Ave", "Pl", "Dr", "Rd", "Ln", "Blvd", "Way", "Ct", "Cir",
+    "Drive", "Street", "Avenue", "Place", "Road", "Lane", "Boulevard",
+    "Circle", "Hwy", "Pkwy", "Terr", "Loop"
+  ],
+
+  "harvest_season_aliases": {
+    "ALL YEAR": "Jan-Dec",
+    "ALLYEAR": "Jan-Dec",
+    "YEAR ROUND": "Jan-Dec",
+    "YEARROUND": "Jan-Dec"
+  },
+
+  "authorized_rep_source_fields": [
+    "authorized_representatives",
+    "authorized_representatives_named"
+  ],
+
+  "authorized_rep_dict_format": {
+    "first_name_key": "first_name",
+    "last_name_key": "last_name"
+  },
+
+  "producer_field_map": {},
+  "commodity_field_map": {},
+  "certificate_field_map": {}
+}

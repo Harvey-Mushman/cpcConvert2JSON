@@ -278,7 +278,7 @@ def process_certificate_fields(table, table_cfg):
                 result[standard_key] = value
     return result
 
-def process_tulare_producer_from_page(page, table_cfg):
+def process_049m_producer_from_page(page, table_cfg):
     """Parse Tulare-style producer table using char-level extraction from the page.
     The producer table has values and labels at specific x-positions."""
     producer = {}
@@ -315,17 +315,17 @@ def process_tulare_producer_from_page(page, table_cfg):
             groups.append((current_x0, current.strip()))
         return groups
 
-    # Find key label lines by searching for known text
+    # Find key label lines by searching for known text (first occurrence only)
     label_ys = {}
     for y_key in sorted(buckets.keys()):
         text = ''.join(c['text'] for c in sorted(buckets[y_key], key=lambda c: c['x0']))
-        if "Name of Producer" in text:
+        if "Name of Producer" in text and "name_label" not in label_ys:
             label_ys["name_label"] = y_key
-        if "Farm or Ranch Name" in text:
+        if "Farm or Ranch Name" in text and "farm_label" not in label_ys:
             label_ys["farm_label"] = y_key
-        if "Mailing Address" in text:
+        if "Mailing Address" in text and "address_label" not in label_ys:
             label_ys["address_label"] = y_key
-        if "Phone Number" in text and "2nd" in text:
+        if "Phone Number" in text and ("Alt" in text or "2nd" in text) and "phone_label" not in label_ys:
             label_ys["phone_label"] = y_key
 
     sorted_ys = sorted(buckets.keys())
@@ -336,16 +336,17 @@ def process_tulare_producer_from_page(page, table_cfg):
         groups = get_groups(prev_y)
         producer["name"] = groups[0][1] if groups else ""
 
-    # Farm name + DBA: values on "Name of Producer" label line (right side) + continuation
+    # Farm name + DBA: look for values between name_label and farm_label lines
     if "name_label" in label_ys and "farm_label" in label_ys:
+        # First check right side of name_label line (Tulare style: name and farm on same line)
         groups = get_groups(label_ys["name_label"])
-        # Farm name is at right side (x > 300)
         farm_parts = [g[1] for g in groups if g[0] > 300]
-        # Check continuation lines between name_label and farm_label
+        # Then check lines between name_label and farm_label (SLO style: farm on its own line)
         for y_key in sorted_ys:
             if label_ys["name_label"] < y_key < label_ys["farm_label"]:
                 cont_groups = get_groups(y_key)
-                farm_parts.extend([g[1] for g in cont_groups if g[0] > 300])
+                for g in cont_groups:
+                    farm_parts.append(g[1])
         farm_text = " ".join(farm_parts).strip().strip("/").strip()
         if "/" in farm_text:
             parts = farm_text.split("/", 1)
@@ -390,22 +391,31 @@ def process_tulare_producer_from_page(page, table_cfg):
 
     return producer
 
-def process_tulare_production_sites(table, table_cfg):
-    """Parse Tulare-style production site table.
-    Each row is one cell: 'ADDRESS, CITY ACREAGE\\nAddress of Production Site N [DATE] Site Acreage'"""
+def process_049m_production_sites(table, table_cfg):
+    """Parse 51-049M production site table.
+    Each row is one cell with two formats:
+      Tulare: 'ADDRESS, CITY ACREAGE\\nAddress of Production Site N [DATE] Site Acreage'
+      SLO:    'N ADDRESS CITY STATE ZIP ACREAGE\\nProduction Site N Address Site Acreage'"""
     sites = []
     for row in table[1:]:
         if not row or not row[0]:
             continue
         cell = normalize(row[0])
-        # Extract site number from "Address of Production Site N"
+        # Try "Address of Production Site N" (Tulare)
         m = re.search(r'Address of Production Site\s+(\d+)', cell)
+        # Try "Production Site N Address" (SLO)
+        if not m:
+            m = re.search(r'Production Site\s+(\d+)\s+Address', cell)
         if not m:
             continue
         site_num = m.group(1)
-        # Extract acreage from before "Site Acreage" (or after optional date)
-        # Text before "Address of Production Site" contains the address and acreage
-        before = cell[:cell.find("Address of Production Site")].strip()
+        # Text before the label line contains the data
+        label_start = cell.find("Address of Production Site")
+        if label_start == -1:
+            label_start = cell.find("Production Site")
+        before = cell[:label_start].strip() if label_start > 0 else ""
+        # If data starts with the site number, strip it (SLO format: "1 2299 Bonita...")
+        before = re.sub(r'^\d+\s+', '', before, count=1)
         # Last token(s) may be acreage
         acreage_m = re.search(r'([\d.]+)\s*$', before)
         acreage = acreage_m.group(1) if acreage_m else ""
@@ -417,7 +427,7 @@ def process_tulare_production_sites(table, table_cfg):
         })
     return sites
 
-def process_tulare_storage(table, table_cfg):
+def process_049m_storage(table, table_cfg):
     """Parse Tulare-style storage location table.
     Each row is one cell: 'ADDRESS\\nStorage Location (A)'"""
     locations = []
@@ -433,7 +443,7 @@ def process_tulare_storage(table, table_cfg):
         locations.append({"location_id": loc_id, "address": address})
     return locations
 
-def process_tulare_commodities(table, table_cfg):
+def process_049m_commodities(table, table_cfg):
     """Parse Tulare-style commodity table.
     Row 0 = title, Row 1 = header, Rows 2+ = space-separated data in single cells.
     Format: SITE COMMODITY [VARIETY] AMOUNT UNIT EST_PROD UNIT SEASON DEVICE MONTHS
@@ -497,7 +507,7 @@ def process_tulare_commodities(table, table_cfg):
             })
     return commodities
 
-def process_tulare_second_certs(table, table_cfg):
+def process_049m_second_certs(table, table_cfg):
     """Parse Tulare-style second certificates table.
     Rows contain sell-for and sell-for-me side by side.
     All rows are included even if values are N/A."""
@@ -529,7 +539,7 @@ def process_tulare_second_certs(table, table_cfg):
             })
     return result
 
-def process_tulare_auth_counties(table, table_cfg):
+def process_049m_auth_counties(table, table_cfg):
     """Parse Tulare-style authorized counties table (multi-column with parenthetical numbers)."""
     counties = []
     for row in table[1:]:  # skip title
@@ -541,7 +551,7 @@ def process_tulare_auth_counties(table, table_cfg):
                 counties.append(name)
     return counties
 
-def process_tulare_auth_reps(table, table_cfg):
+def process_049m_auth_reps(table, table_cfg):
     """Parse Tulare-style authorized representatives table.
     Returns objects with last_name, first_name, phone_number."""
     reps = []
@@ -558,6 +568,94 @@ def process_tulare_auth_reps(table, table_cfg):
                 "phone_number": phone
             })
     return reps
+
+def process_049m_mega_table(table, table_cfg):
+    """Process a merged table that contains COMMODITIES + AUTHORIZED COUNTIES +
+    SECOND CERTIFICATES in one pdfplumber table (51-049M form).
+    Splits the table at section header rows and processes each section."""
+    result = {}
+
+    # Find section boundaries by looking for header rows
+    sections = []  # list of (section_name, start_row, end_row)
+    for i, row in enumerate(table):
+        first_cell = normalize(row[0]) if row and row[0] else ""
+        if first_cell.startswith("COMMODITIES"):
+            sections.append(("commodities", i, None))
+        elif first_cell == "AUTHORIZED COUNTIES":
+            sections.append(("authorized_counties", i, None))
+        elif first_cell == "SECOND CERTIFICATES":
+            sections.append(("second_certificates", i, None))
+        elif first_cell == "AUTHORIZED REPRESENTATIVES":
+            sections.append(("authorized_representatives", i, None))
+
+    # Set end rows
+    for idx in range(len(sections)):
+        if idx + 1 < len(sections):
+            sections[idx] = (sections[idx][0], sections[idx][1], sections[idx + 1][1])
+        else:
+            sections[idx] = (sections[idx][0], sections[idx][1], len(table))
+
+    for section_name, start, end in sections:
+        sub_table = table[start:end]
+
+        if section_name == "commodities":
+            # Row 0 = title ("COMMODITIES - N Total Lines"), Row 1 = headers, Row 2+ = data
+            col_map = table_cfg.get("commodity_column_map", {})
+            if len(sub_table) > 1:
+                # Build header map from row 1
+                headers = sub_table[1]
+                mapped_headers = []
+                for h in headers:
+                    h_norm = normalize(h) if h else ""
+                    mapped_headers.append(col_map.get(h_norm, h_norm))
+
+                commodities = []
+                for row in sub_table[2:]:
+                    if not any(c and normalize(c) for c in row):
+                        continue
+                    entry = {}
+                    for h, v in zip(mapped_headers, row):
+                        if h:
+                            entry[h] = normalize(v) if v else ""
+                    # Split "commodity, variety" if combined
+                    if "commodity" in entry and "variety" not in entry:
+                        comm_val = entry["commodity"]
+                        if "," in comm_val:
+                            parts = comm_val.split(",", 1)
+                            entry["commodity"] = parts[0].strip()
+                            entry["variety"] = parts[1].strip()
+                        else:
+                            entry["variety"] = ""
+                    for std in ("site", "commodity", "variety", "amount_grown",
+                                "est_production", "harvest_season",
+                                "season_altering_device", "months_in_storage"):
+                        entry.setdefault(std, "")
+                    commodities.append(entry)
+                if commodities:
+                    result.setdefault("commodities", []).extend(commodities)
+
+        elif section_name == "authorized_counties":
+            # Row 0 = "AUTHORIZED COUNTIES", remaining rows have county names in cells
+            counties = []
+            for row in sub_table[1:]:
+                for cell in row:
+                    if cell and normalize(cell):
+                        name = re.sub(r'\s*\(\d+\)\s*$', '', normalize(cell)).strip()
+                        if name:
+                            counties.append(name)
+            result["authorized_counties"] = counties
+
+        elif section_name == "second_certificates":
+            # Same structure as Tulare second certs
+            data = process_049m_second_certs(sub_table, table_cfg)
+            for key, rows in data.items():
+                result.setdefault(key, []).extend(rows)
+
+        elif section_name == "authorized_representatives":
+            reps = process_049m_auth_reps(sub_table, table_cfg)
+            result.setdefault("authorized_representatives", []).extend(reps)
+
+    return result
 
 def extract_cert_fields_from_text(page_text, config):
     """Extract certificate fields from page text using regex.
@@ -1035,6 +1133,12 @@ def extract_page_table_based(page, county_config):
             continue
 
         table_cfg = tables_config.get(table_name, {})
+        # Try prefix matching if exact name not found (e.g. "COMMODITIES - 1 Total Lines")
+        if not table_cfg:
+            for cfg_name, cfg in tables_config.items():
+                if cfg.get("match_prefix") and table_name.startswith(cfg["match_prefix"]):
+                    table_cfg = cfg
+                    break
         table_type = table_cfg.get("type", "unknown")
 
         if table_type == "ignore":
@@ -1071,28 +1175,28 @@ def extract_page_table_based(page, county_config):
             data = process_split_data_table(table, table_cfg)
             result.update(data)
 
-        elif table_type == "tulare_producer":
-            data = process_tulare_producer_from_page(page, table_cfg)
+        elif table_type == "049m_producer":
+            data = process_049m_producer_from_page(page, table_cfg)
             result[maps_to] = data
 
-        elif table_type == "tulare_production_sites":
-            data = process_tulare_production_sites(table, table_cfg)
+        elif table_type == "049m_production_sites":
+            data = process_049m_production_sites(table, table_cfg)
             result.setdefault(maps_to, []).extend(data)
 
-        elif table_type == "tulare_storage":
-            data = process_tulare_storage(table, table_cfg)
+        elif table_type == "049m_storage":
+            data = process_049m_storage(table, table_cfg)
             result.setdefault(maps_to, []).extend(data)
 
-        elif table_type == "tulare_commodities":
-            data = process_tulare_commodities(table, table_cfg)
+        elif table_type == "049m_commodities":
+            data = process_049m_commodities(table, table_cfg)
             result.setdefault(maps_to, []).extend(data)
 
-        elif table_type == "tulare_second_certs":
-            data = process_tulare_second_certs(table, table_cfg)
+        elif table_type == "049m_second_certs":
+            data = process_049m_second_certs(table, table_cfg)
             for key, rows in data.items():
                 result.setdefault(key, []).extend(rows)
 
-        elif table_type == "tulare_counties_and_certs":
+        elif table_type == "049m_counties_and_certs":
             # Combo table: row 0 = overflow counties, rest = second certificates
             if table[0]:
                 for cell in table[0]:
@@ -1100,17 +1204,25 @@ def extract_page_table_based(page, county_config):
                         name = normalize(cell).strip()
                         if name:
                             result.setdefault("authorized_counties", []).append(name)
-            data = process_tulare_second_certs(table, table_cfg)
+            data = process_049m_second_certs(table, table_cfg)
             for key, rows in data.items():
                 result.setdefault(key, []).extend(rows)
 
-        elif table_type == "tulare_auth_counties":
-            data = process_tulare_auth_counties(table, table_cfg)
+        elif table_type == "049m_auth_counties":
+            data = process_049m_auth_counties(table, table_cfg)
             result.setdefault(maps_to, []).extend(data)
 
-        elif table_type == "tulare_auth_reps":
-            data = process_tulare_auth_reps(table, table_cfg)
+        elif table_type == "049m_auth_reps":
+            data = process_049m_auth_reps(table, table_cfg)
             result.setdefault(maps_to, []).extend(data)
+
+        elif table_type == "049m_mega_table":
+            data = process_049m_mega_table(table, table_cfg)
+            for key, rows in data.items():
+                if isinstance(rows, list):
+                    result.setdefault(key, []).extend(rows)
+                else:
+                    result[key] = rows
 
         else:
             # Not a named table — try table_patterns before flagging as unknown
@@ -1143,7 +1255,7 @@ def extract_page_table_based(page, county_config):
                         result.setdefault(maps_to, []).extend(data)
                         log(f"    INFO: Positional table '{_pname}' matched"
                             f" ({len(data)} rows → {maps_to})", also_print=False)
-                elif ptype == "tulare_counties_and_certs":
+                elif ptype == "049m_counties_and_certs":
                     # Combo table: row 0 = overflow counties, rest = second certificates
                     if table[0]:
                         for cell in table[0]:
@@ -1151,7 +1263,7 @@ def extract_page_table_based(page, county_config):
                                 name = normalize(cell).strip()
                                 if name:
                                     result.setdefault("authorized_counties", []).append(name)
-                    data = process_tulare_second_certs(table, pattern_cfg)
+                    data = process_049m_second_certs(table, pattern_cfg)
                     for key, rows in data.items():
                         result.setdefault(key, []).extend(rows)
                 elif ptype == "ignore":

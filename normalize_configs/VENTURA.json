@@ -1,0 +1,6 @@
+{
+  "notes": "Ventura County. Producer has separate city and zip_code but missing state. Amount and production are combined fields needing split. Access export format uses UPPER CASE commodity names. XLSX state form format has decimal amounts (e.g. '1.00 Row by 50 feet').",
+  "producer_field_map": {"phone_cell": "phone_alternate"},
+  "commodity_field_map": {},
+  "certificate_field_map": {}
+}

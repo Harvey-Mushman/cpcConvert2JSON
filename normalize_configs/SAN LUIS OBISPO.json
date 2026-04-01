@@ -1,0 +1,9 @@
+{
+  "notes": "San Luis Obispo County. Uses form 51-049M same as Tulare. Producer uses 'phone_number' and 'Alt Phone Number' labels. Phone field mapping matches Tulare.",
+  "producer_field_map": {
+    "phone_number": "phone_business",
+    "2nd_phone_number": "phone_alternate"
+  },
+  "commodity_field_map": {},
+  "certificate_field_map": {}
+}

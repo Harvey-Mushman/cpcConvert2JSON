@@ -1,0 +1,61 @@
+{
+  "county": "SAN LUIS OBISPO",
+  "generated_date": "2026-04-01",
+  "form_revision": "51-049M (Rev. 09/2020)",
+  "notes": "San Luis Obispo County uses form 51-049M. Producer info is in single-cell rows with inline labels. Production sites are single-cell rows. Storage location may be empty. COMMODITIES, AUTHORIZED COUNTIES, and SECOND CERTIFICATES are merged into one pdfplumber table and must be split at section header rows.",
+
+  "page_repeat_prefixes": [],
+
+  "certificate_fields_from_text": {
+    "Issuing County": "issuing_county",
+    "Certificate Number": "certificate_number",
+    "Issue Date": "issuing_date",
+    "Expiration Date": "expiration_date",
+    "Amended Date": "amended_date",
+    "Copies Issued": "certified_copies_made",
+    "County Fee": "county_fee"
+  },
+
+  "tables": {
+    "FOR OFFICIAL USE ONLY": {
+      "type": "ignore"
+    },
+
+    "PRODUCER INFORMATION": {
+      "type": "049m_producer",
+      "maps_to": "producer",
+      "field_map": {}
+    },
+
+    "PRODUCTION SITE INFORMATION": {
+      "type": "049m_production_sites",
+      "maps_to": "production_sites"
+    },
+
+    "STORAGE LOCATION": {
+      "type": "049m_storage",
+      "maps_to": "storage_locations"
+    },
+
+    "COMMODITIES": {
+      "type": "049m_mega_table",
+      "match_prefix": "COMMODITIES",
+      "commodity_column_map": {
+        "Site#": "site",
+        "Common Name - Variety/Type": "commodity",
+        "Amount or Unit Grown": "amount_grown",
+        "Estimated Production": "est_production",
+        "Harvest Season": "harvest_season",
+        "Season Altering Device": "season_altering_device",
+        "Months in Storage": "months_in_storage"
+      },
+      "skip_value": "N/A"
+    },
+
+    "VERIFICATION/SIGNATURES": {
+      "type": "ignore"
+    }
+  },
+
+  "table_patterns": {}
+}

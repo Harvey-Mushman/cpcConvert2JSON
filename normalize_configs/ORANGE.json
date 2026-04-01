@@ -1,0 +1,6 @@
+{
+  "notes": "Orange County. Same structure as Los Angeles. Producer address contains full address without separate city/state/zip. Only one phone field (phone_business). Amount and production are combined fields needing split.",
+  "producer_field_map": {"phone_cell": "phone_alternate"},
+  "commodity_field_map": {},
+  "certificate_field_map": {}
+}

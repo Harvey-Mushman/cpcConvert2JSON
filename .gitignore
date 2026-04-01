@@ -5,6 +5,7 @@ certificates/
 
 # Generated output
 json_output/
+json_normalized/
 page_output/
 conversion_log.txt
 

@@ -1,0 +1,6 @@
+{
+  "notes": "Santa Barbara County. Producer has city_state_zip to split. Missing farm_name, dba, email fields. Amount and production are combined fields needing split. Phone labels use phone_cell for residential and phone_business for business.",
+  "producer_field_map": {"phone_cell": "phone_alternate"},
+  "commodity_field_map": {},
+  "certificate_field_map": {}
+}

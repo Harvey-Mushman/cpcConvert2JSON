@@ -1,0 +1,9 @@
+{
+  "notes": "Tulare County uses 'phone_number' and '2nd_phone_number' instead of 'phone_business' and 'phone_cell'.",
+  "producer_field_map": {
+    "phone_number": "phone_business",
+    "2nd_phone_number": "phone_alternate"
+  },
+  "commodity_field_map": {},
+  "certificate_field_map": {}
+}

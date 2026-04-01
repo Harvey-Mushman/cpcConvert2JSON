@@ -1,0 +1,6 @@
+{
+  "notes": "Kern County. Producer has city_state_zip to split. Amount and production are combined fields needing split. Harvest season uses en-dash in some entries (Murray Family Farms).",
+  "producer_field_map": {"phone_cell": "phone_alternate"},
+  "commodity_field_map": {},
+  "certificate_field_map": {}
+}

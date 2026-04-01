@@ -1,0 +1,6 @@
+{
+  "notes": "Gold standard. San Diego CPCs already have correctly separated amount_grown/amount_unit and est_production/production_unit fields. Producer has city_state_zip to split. Production unit 'Lbs.' needs period removed.",
+  "producer_field_map": {"phone_cell": "phone_alternate"},
+  "commodity_field_map": {},
+  "certificate_field_map": {}
+}
