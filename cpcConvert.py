@@ -696,7 +696,8 @@ def _build_label_stop_pattern(config):
 def extract_producer_fields_from_text(page_text, config):
     """Extract producer fields from page text using regex.
     Stops at the next known field label on the same line to avoid grabbing
-    two-column values."""
+    two-column values. If a label has no value on the same line (e.g. DBA:
+    followed by newline), checks the next line for the value."""
     field_map = config.get("producer_fields_from_text", {})
     if not field_map:
         return {}
@@ -709,6 +710,18 @@ def extract_producer_fields_from_text(page_text, config):
             value = m.group(1).strip()
             if value:
                 producer[field_name] = value
+            else:
+                # Value is empty on same line — check next line
+                label_pos = m.start()
+                newline_pos = page_text.find('\n', label_pos)
+                if newline_pos >= 0:
+                    next_newline = page_text.find('\n', newline_pos + 1)
+                    if next_newline == -1:
+                        next_newline = len(page_text)
+                    next_line = page_text[newline_pos + 1:next_newline].strip()
+                    # Only use next line if it's not another label
+                    if next_line and not any(next_line.startswith(l) for l in field_map.keys()):
+                        producer[field_name] = next_line
     return producer
 
 def extract_text_sections(page_text, config):

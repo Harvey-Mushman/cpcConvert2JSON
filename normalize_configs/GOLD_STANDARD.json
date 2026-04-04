@@ -13,7 +13,6 @@
 
   "standard_producer_fields": [
     "name",
-    "farm_name",
     "dba",
     "address",
     "city",

@@ -264,6 +264,13 @@ def normalize_producer(producer, config):
     if "zip_code" in result:
         result["zip_code"] = result["zip_code"].rstrip("-").strip()
 
+    # If dba is empty, copy farm_name into dba
+    if not result.get("dba") and result.get("farm_name"):
+        result["dba"] = result["farm_name"]
+
+    # Remove farm_name - dba is the standard field
+    result.pop("farm_name", None)
+
     # Ensure all standard fields present from config
     for field in config.get("standard_producer_fields", []):
         result.setdefault(field, "")
