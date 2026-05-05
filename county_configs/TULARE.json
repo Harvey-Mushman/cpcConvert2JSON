@@ -1,6 +1,7 @@
 {
   "county": "TULARE",
   "generated_date": "2026-03-29",
+  "generated_with_model": "claude-sonnet-4-6",
   "form_revision": "51-049M (Rev. 05/2022)",
   "notes": "Tulare County uses form 51-049M. Producer info is in a single cell with inline labels. Production sites have address + acreage in single cells. Storage locations have address + Storage Location (letter) in single cells. Commodities are single-cell rows with space-separated fields. Authorized counties span multiple columns with parenthetical numbers. Second certificates table has sell-for and sell-for-me side by side.",
 

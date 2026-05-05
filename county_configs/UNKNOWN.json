@@ -1,6 +1,7 @@
 {
   "county": "UNKNOWN",
   "generated_date": "2026-03-24",
+  "generated_with_model": "claude-sonnet-4-6",
   "notes": "No table names or page 1 text were provided for this county. This is a skeleton config based on common California CPC patterns. All field labels, table names, and mappings are placeholders derived from the standard schema and should be verified against actual documents from this county.",
   "page_repeat_prefixes": [
     "Certified Producer:"

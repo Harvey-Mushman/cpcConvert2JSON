@@ -1,6 +1,7 @@
 {
   "county": "SANTA BARBARA",
   "generated_date": "2026-03-29",
+  "generated_with_model": "claude-sonnet-4-6",
   "extraction_method": "text_based",
   "notes": "Santa Barbara CPCs are text-based. Certificate header fields are in a two-column free-text layout. Producer info uses NAME:/DBA:/ADDRESS:/CITY:/PHONE: labels. Production sites are numbered inline (1. addr 2. addr). Storage locations are lettered inline (A. addr B. addr). Commodities are positional text columns extracted via character x-positions. Authorized counties and sell-for info appear on the last page after LAST ENTRY marker. Phone labels: (res.) = cell, (bus.) = business.",
 

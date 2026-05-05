@@ -1,6 +1,7 @@
 {
   "county": "KERN",
   "generated_date": "2026-03-23",
+  "generated_with_model": "claude-sonnet-4-6",
   "form_revision": "51-049M (Rev 09/2020)",
   "notes": "Kern County form has several non-standard structures. Certificate header garbles due to two-column PDF overlap; only EXPIRATION DATE, AMENDED DATE, CERTIFIED COPIES MADE, and ISSUING COUNTY are readable from text. Producer info is free text. Production sites are a 4-column paired grid with no title row (first cell is the first site). Storage locations have no title row; each cell contains 'Storage Location (X): address'. Authorized counties are a multi-cell grid with no title row; first cell is the first county name. Producers/reps are a single 6-column split table. Commodity table has no title row — SITE # IS the header row.",
 

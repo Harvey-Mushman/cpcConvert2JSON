@@ -310,6 +310,47 @@ def normalize_commodity(comm, config):
         result["est_production"] = clean_number(result["est_production"])
         result["production_unit"] = normalize_unit(result["production_unit"], unit_map)
 
+    # Strip leading non-letter characters (e.g. "^") from commodity and variety
+    for fld in ("commodity", "variety"):
+        val = result.get(fld, "")
+        if val:
+            result[fld] = re.sub(r'^[^A-Za-z]+', '', val).strip()
+
+    # Strip redundant category suffixes (e.g. "- Cut Flower", "- Nursery Stock")
+    redundant = config.get("redundant_commodity_suffixes", [])
+    for suffix in redundant:
+        result["commodity"] = re.sub(
+            r'\s*[-,]\s*' + re.escape(suffix) + r'\s*$', '',
+            result.get("commodity", ""), flags=re.IGNORECASE).strip()
+
+    # Split "Commodity - Variety" or "Commodity, Variety" when variety is empty
+    if not result.get("variety", "").strip():
+        commodity = result.get("commodity", "")
+        if " - " in commodity:
+            parts = commodity.split(" - ", 1)
+            result["commodity"] = parts[0].strip()
+            result["variety"] = parts[1].strip()
+        elif ", " in commodity:
+            parts = commodity.split(", ", 1)
+            result["commodity"] = parts[0].strip()
+            result["variety"] = parts[1].strip()
+
+    # Promote variety to commodity when commodity is just a category name
+    drop_names = {n.strip().lower() for n in config.get("drop_empty_commodity_names", [])}
+    if result.get("commodity", "").strip().lower() in drop_names and result.get("variety", "").strip():
+        result["commodity"] = result["variety"].strip()
+        result["variety"] = ""
+
+    # Strip redundant "Nursery Stock" from commodity when both units are plant-based
+    nursery_units = set(config.get("nursery_stock_units", []))
+    amt_unit = result.get("amount_unit", "")
+    prod_unit = result.get("production_unit", "")
+    if amt_unit in nursery_units and prod_unit in nursery_units:
+        commodity = result.get("commodity", "")
+        cleaned = re.sub(r'\s*-\s*Nursery Stock$', '', commodity, flags=re.IGNORECASE)
+        if cleaned != commodity:
+            result["commodity"] = cleaned
+
     # Normalize harvest season using config
     result["harvest_season"] = normalize_harvest_season(
         result.get("harvest_season", ""), config)
@@ -390,7 +431,19 @@ def normalize_file(data, config):
 
     # Commodities
     raw_commodities = data.get("commodities", [])
-    result["commodities"] = [normalize_commodity(c, config) for c in raw_commodities]
+    normalized = [normalize_commodity(c, config) for c in raw_commodities]
+
+    drop_names = {n.strip().lower() for n in config.get("drop_empty_commodity_names", [])}
+    data_fields = [f for f in config.get("standard_commodity_fields", []) if f != "commodity"]
+
+    def _is_empty_placeholder(c):
+        raw = (c.get("commodity") or "").strip().lower()
+        name = re.sub(r'^[^a-z0-9]+', '', raw).strip()
+        if name not in drop_names:
+            return False
+        return all(not (c.get(f) or "").strip() for f in data_fields)
+
+    result["commodities"] = [c for c in normalized if not _is_empty_placeholder(c)]
 
     return result
 

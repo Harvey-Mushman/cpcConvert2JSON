@@ -1,6 +1,7 @@
 {
   "county": "LOS ANGELES",
   "generated_date": "2026-03-22",
+  "generated_with_model": "claude-sonnet-4-6",
   "form_revision": "51-049 (Rev 10/24)",
   "notes": "Certificate header info is free text on page 1, not a table. Column headers contain newlines which are normalized to spaces. Page repeat summaries at top of pages 2+ start with 'Certified Producer:'.",
 

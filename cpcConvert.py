@@ -65,6 +65,29 @@ def normalize(text):
         return ""
     return re.sub(r'\s+', ' ', str(text)).strip()
 
+def clean_commodities(data):
+    """Universal post-extraction cleanup for commodity fields across all counties."""
+    for comm in data.get("commodities", []):
+        # Strip leading non-letter characters (^, (, digits, etc.)
+        for fld in ("commodity", "variety"):
+            val = comm.get(fld, "")
+            if val:
+                comm[fld] = re.sub(r'^[^A-Za-z]+', '', val).strip()
+
+        # Split "Commodity - Variety" or "Commodity, Variety" when variety is empty
+        if not comm.get("variety", "").strip():
+            commodity = comm.get("commodity", "")
+            if " - " in commodity:
+                parts = commodity.split(" - ", 1)
+                comm["commodity"] = parts[0].strip()
+                comm["variety"] = parts[1].strip()
+            elif ", " in commodity:
+                parts = commodity.split(", ", 1)
+                comm["commodity"] = parts[0].strip()
+                comm["variety"] = parts[1].strip()
+    return data
+
+
 def clean_json_response(raw):
     raw = raw.strip()
     if raw.startswith("```"):
@@ -1428,13 +1451,16 @@ Table types:
 
 Output only raw JSON, no commentary.
 """
+    model_id = "claude-opus-4-6"
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=model_id,
         max_tokens=4000,
         messages=[{"role": "user", "content": prompt}]
     )
     raw = clean_json_response(response.content[0].text)
-    return json.loads(raw)
+    config = json.loads(raw)
+    config["generated_with_model"] = model_id
+    return config
 
 # ── XLS/XLSX EXTRACTION ──────────────────────────────────────────
 
@@ -1809,6 +1835,8 @@ for input_file in files:
             log(f"  ERROR: Unknown format_type '{format_type}'. Skipping.")
             continue
 
+        clean_commodities(data)
+
         # XLS files produce a single output (no pages)
         file_page_folder = page_output_folder / input_file.stem
         file_page_folder.mkdir(exist_ok=True)
@@ -1882,6 +1910,7 @@ for input_file in files:
         for page_num, page in enumerate(pdf.pages, start=1):
             log(f"  Page {page_num}/{total_pages}: extracting...")
             data = extract_page(page, county_config)
+            clean_commodities(data)
             page_file = pdf_page_folder / f"page_{page_num:03d}.json"
             page_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
             count = len(data.get("commodities", []))

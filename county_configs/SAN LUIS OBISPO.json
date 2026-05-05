@@ -1,6 +1,7 @@
 {
   "county": "SAN LUIS OBISPO",
   "generated_date": "2026-04-01",
+  "generated_with_model": "claude-sonnet-4-6",
   "form_revision": "51-049M (Rev. 09/2020)",
   "notes": "San Luis Obispo County uses form 51-049M. Producer info is in single-cell rows with inline labels. Production sites are single-cell rows. Storage location may be empty. COMMODITIES, AUTHORIZED COUNTIES, and SECOND CERTIFICATES are merged into one pdfplumber table and must be split at section header rows.",
 

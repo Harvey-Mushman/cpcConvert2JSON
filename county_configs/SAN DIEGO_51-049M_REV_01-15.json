@@ -1,6 +1,7 @@
 {
   "county": "SAN DIEGO",
   "generated_date": "2026-03-22",
+  "generated_with_model": "claude-sonnet-4-6",
   "form_revision": "51-049M (REV 01/15)",
   "extraction_method": "text_based",
   "notes": "San Diego CPCs are almost entirely free text. Two pdfplumber tables appear: (1) page 1 production site table (each cell = one site block), (2) pages 2+ commodity table with all column headers squished into the first cell of row 0. Certificate header, producer info, authorized counties, authorized reps, and producers_i_sell_for are all parsed from page text.",

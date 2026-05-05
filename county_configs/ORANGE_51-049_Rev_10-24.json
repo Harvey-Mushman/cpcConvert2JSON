@@ -1,6 +1,7 @@
 {
   "county": "ORANGE",
   "generated_date": "2026-03-23",
+  "generated_with_model": "claude-sonnet-4-6",
   "form_revision": "51-049 (Rev 10/24)",
   "page_repeat_prefixes": [
     "Certified Producer:"

@@ -1,6 +1,7 @@
 {
   "county": "VENTURA",
   "generated_date": "2026-03-29",
+  "generated_with_model": "claude-sonnet-4-6",
   "form_revision": "51-049 (Rev 10/24)",
   "format_type": "xlsx_state_form",
   "notes": "Ventura County state form format (.xlsx). Same form as LA County 51-049 (Rev 10/24) but rendered as an Excel spreadsheet with labeled rows instead of PDF tables. Data is spread across merged cells with section headers. Certificate info is in a multi-line text block. Producer info, production sites, storage locations, sell-for, and commodities use labeled row sections.",

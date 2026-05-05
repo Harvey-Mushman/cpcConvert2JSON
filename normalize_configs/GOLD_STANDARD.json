@@ -57,6 +57,7 @@
     "HIVE": "Hive", "HIVES": "Hive",
     "DUCK": "Duck", "DUCKS": "Duck",
     "GOOSE": "Goose", "GEESE": "Goose",
+    "EACH": "Each", "EA": "Each",
     "POT": "Pot", "POTS": "Pot",
     "TRAY": "Tray", "TRAYS": "Tray",
     "ACRE": "Acre", "ACRES": "Acre",
@@ -75,6 +76,12 @@
     "SQ FT ROW": "Sq Ft Row", "SQ FT ROWS": "Sq Ft Row",
     "ROW FT": "Row Ft"
   },
+
+  "nursery_stock_units": ["Plant", "Tree", "Each", "Pot", "Gal Pot", "Bush", "Vine"],
+
+  "redundant_commodity_suffixes": ["Cut Flower", "Cut Flowers", "Nursery Stock", "Cultivated", "Microgreen", "Microgreens"],
+
+  "drop_empty_commodity_names": ["Nursery Stock", "Cut Flower", "Cut Flowers"],
 
   "empty_value_skip_list": ["NONE", "---", "N/A", "NA", "0", ""],
 
