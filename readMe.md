@@ -26,4 +26,42 @@ The next stem is cpcMerge.py, this program assembled all of the individual pages
 
 The third and final step is normailzation, in this process the cpcNormalize.py program converts all of the merged output files into a standard format that can be imported into another systems database.  The normalizer references the configuration file for each county which describes the data points that need to be altered to confirm to the standard format.  The "Gold_Standard.config" file has rules that are applied to all counties.
 
+Known Warning Messages, symtoms and solutions
+
+Sympton reads:
+Page 2/9: extracting...
+    WARNING: Unknown table '4' — not in county config. Form may have changed. Review county_configs/LOS ANGELES.json
+
+Explnation:
+
+The table name '4' means pdfplumber extracted a table whose first cell is literally just the number "4". This is almost certainly a commodity data row (site number 4) that pdfplumber split into a separate table — it happens when a page break falls mid-table, and the continuation on the next page doesn't have the column headers repeated.
+
+The code tried to match it as a known table name in the LA config, couldn't find "4", then tried page-break continuation detection (line 1311), and that also didn't match. So it falls through to the generic "unknown table" handler.
+
+Two things to check:
+
+1. Is the data being lost? The fallback handler (lines 1321-1329) still tries to parse it, but without knowing it's a commodity table it may not map the columns correctly.
+
+2. The config filename — it says LOS ANGELES.json rather than LOS ANGELES_51-049_Rev_10-24.json. Is this a different CPC that didn't match the form revision, causing it to generate a new generic config?
+
+This condition was correted. the page started with a headless table which was caused by the prior page table runnoverby one additional site location row.
+
+
+Sympton reads (Ventura provides XLS format files):
+FILE: Cuyama Orchards.xls
+WARNING *** OLE2 inconsistency: SSCS size is 0 but SSAT size is non-zero
+  Format: xls_access_export
+  Config: VENTURA_ACCESS_EXPORT.json
+WARNING *** OLE2 inconsistency: SSCS size is 0 but SSAT size is non-zero
+  Extracted 35 commodities from Access export
+  TOTAL: 35 commodities
+
+Explnation:
+
+That warning is not from your code — it's from the xlrd library that reads .xls files. It's a low-level warning about the internal structure of the Excel file (the OLE2 container format has a minor inconsistency in how small-stream sizes are declared).
+
+It's harmless. The file is being read correctly — 35 commodities were extracted successfully. Ventura County's Access database exports just produce slightly non-standard .xls files, which is common with older Microsoft Access exports.
+
+You can safely ignore it. Would you like me to suppress the warning in the code so it doesn't clutter the output?
+
 ####

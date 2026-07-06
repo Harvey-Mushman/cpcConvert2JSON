@@ -74,17 +74,15 @@ def clean_commodities(data):
             if val:
                 comm[fld] = re.sub(r'^[^A-Za-z]+', '', val).strip()
 
-        # Split "Commodity - Variety" or "Commodity, Variety" when variety is empty
+        # Split commodity/variety on separator (dash, slash, comma) when variety is empty
         if not comm.get("variety", "").strip():
             commodity = comm.get("commodity", "")
-            if " - " in commodity:
-                parts = commodity.split(" - ", 1)
-                comm["commodity"] = parts[0].strip()
-                comm["variety"] = parts[1].strip()
-            elif ", " in commodity:
-                parts = commodity.split(", ", 1)
-                comm["commodity"] = parts[0].strip()
-                comm["variety"] = parts[1].strip()
+            for sep in (r'\s*-\s+', r'\s*/\s*', r'\s*,\s*'):
+                m = re.search(sep, commodity)
+                if m:
+                    comm["commodity"] = commodity[:m.start()].strip()
+                    comm["variety"] = commodity[m.end():].strip()
+                    break
     return data
 
 
@@ -682,11 +680,11 @@ def process_049m_mega_table(table, table_cfg):
 
 def extract_cert_fields_from_text(page_text, config):
     """Extract certificate fields from page text using regex.
-    Stops at end of line; skips empty values."""
+    Uses stop pattern to avoid bleeding into adjacent columns."""
+    stop = _build_label_stop_pattern(config) or r'(?=\n|$)'
     result = {}
     for label, standard_key in config.get("certificate_fields_from_text", {}).items():
-        # Use [: \t]+ so we never cross a newline when the field is empty
-        pattern = re.escape(label) + r'[: \t]+([^\n]*)'
+        pattern = re.escape(label) + r'[: \t]+([^\n]*?)' + stop
         m = re.search(pattern, page_text, re.IGNORECASE)
         if m:
             value = m.group(1).strip()
@@ -743,8 +741,11 @@ def extract_producer_fields_from_text(page_text, config):
                         next_newline = len(page_text)
                     next_line = page_text[newline_pos + 1:next_newline].strip()
                     # Only use next line if it's not another label
-                    if next_line and not any(next_line.startswith(l) for l in field_map.keys()):
+                    all_labels = list(field_map.keys()) + list(config.get("certificate_fields_from_text", {}).keys()) + config.get("additional_stop_labels", [])
+                    if next_line and not any(next_line.startswith(l) for l in all_labels):
                         producer[field_name] = next_line
+    if "zip_code" in producer:
+        producer["zip_code"] = producer["zip_code"].rstrip('- ')
     return producer
 
 def extract_text_sections(page_text, config):
@@ -838,9 +839,61 @@ def extract_text_sections(page_text, config):
             for i in range(1, len(parts) - 1, 2):
                 letter = parts[i]
                 addr = parts[i + 1].strip().rstrip(",. ").strip() if i + 1 < len(parts) else ""
-                locations.append({"location_id": letter, "address": addr})
+                months = ""
+                months_match = re.search(r'\s+(ALL\s+YEAR|\d{1,2}\s*(?:MONTHS?|MOS?)?)\s*$', addr, re.IGNORECASE)
+                if months_match:
+                    months = months_match.group(1).strip()
+                    addr = addr[:months_match.start()].strip()
+                loc = {"location_id": letter, "address": addr}
+                if months:
+                    loc["months_in_storage"] = months
+                locations.append(loc)
             if locations:
                 result[maps_to] = locations
+        elif parser == "numbered_commodities":
+            unit_words = r'(?:SQ\s+FT|ACRES?|TREES?|PLANTS?|HIVES?|VINES?|BUSHES?|ROWS?|UNITS?|ROW\s+FT)'
+            amount_unit_re = re.compile(r'([\d,.]+)\s+(' + unit_words + r')\s*$', re.IGNORECASE)
+            season_re = re.compile(r'(\d{2}/\d{2}\s*-\s*\d{2}/\d{2})')
+            commodities = []
+            for line in section_text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                em = re.match(r'^\d+:\s+(\d+)\s+(.+)$', line)
+                if not em:
+                    continue
+                site = em.group(1)
+                rest = em.group(2)
+                sm = season_re.search(rest)
+                if not sm:
+                    continue
+                before_season = rest[:sm.start()].strip()
+                after_season = rest[sm.end():].strip()
+                am = amount_unit_re.search(before_season)
+                if am:
+                    commodity = before_season[:am.start()].strip()
+                    amount_grown = am.group(0).strip()
+                else:
+                    commodity = before_season
+                    amount_grown = ""
+                est_production = after_season
+                months = ""
+                tm = re.search(r'\s+(\d+)$', after_season)
+                if tm:
+                    months = tm.group(1)
+                    est_production = after_season[:tm.start()].strip()
+                entry = {
+                    "site": site,
+                    "commodity": commodity,
+                    "amount_grown": amount_grown,
+                    "harvest_season": sm.group(1),
+                    "est_production": est_production,
+                }
+                if months:
+                    entry["months_in_storage"] = months
+                commodities.append(entry)
+            if commodities:
+                result[maps_to] = commodities
     return result
 
 def process_production_sites_cells(table, table_pattern_cfg):
@@ -1005,14 +1058,16 @@ def extract_kern_official_header(page):
     return {k: v for k, v in result.items() if v is not None}
 
 
-def find_continuation_config(table, tables_config):
+def find_continuation_config(table, tables_config, last_data_table=None):
     """Detect if a table is a page-break continuation of a known data_table config.
 
-    Checks two ways:
+    Checks three ways:
       1. First cell matches a known table name exactly (title row repeated on new page).
          In this case the table can be processed normally (header row auto-detected).
       2. First row contains column headers that belong to a known data_table.
          In this case header_row=0 must be forced.
+      3. Headerless data: column count matches last_data_table from the prior page.
+         All rows are treated as data using the column_map key order as headers.
 
     Returns (config_name, table_cfg, force_header_row_0) or (None, None, False).
     """
@@ -1040,13 +1095,31 @@ def find_continuation_config(table, tables_config):
             if matches >= 2 and matches >= len(first_row_cells) // 2:
                 return cfg_name, tcfg, True
 
+    # Pass 3: headerless continuation — column count matches last known data_table
+    if last_data_table:
+        cfg_name, tcfg = last_data_table
+        col_map = tcfg.get("column_map", {})
+        num_cols = len(table[0])
+        if num_cols == len(col_map) and first_cell not in tables_config:
+            return cfg_name, tcfg, "headerless"
+
     return None, None, False
 
 
 def _apply_continuation(table, cont_cfg, force_h0, maps_to, result):
     """Process a continuation table and extend result[maps_to]."""
-    cfg_use = {**cont_cfg, "header_row": 0} if force_h0 else cont_cfg
-    data = process_data_table(table, cfg_use)
+    if force_h0 == "headerless":
+        col_map = cont_cfg.get("column_map", {})
+        headers = list(col_map.values())
+        data = []
+        for row in table:
+            if not any(c and normalize(c) for c in row):
+                continue
+            entry = {h: normalize(v) for h, v in zip(headers, row) if h}
+            data.append(entry)
+    else:
+        cfg_use = {**cont_cfg, "header_row": 0} if force_h0 else cont_cfg
+        data = process_data_table(table, cfg_use)
     if data:
         result.setdefault(maps_to, []).extend(data)
     return data
@@ -1069,13 +1142,13 @@ def match_table_pattern(table, pattern_cfg):
 def extract_commodities_by_char_position(page, config):
     """Extract commodity data from free-text lines using character x-positions.
     Used for Santa Barbara and similar counties where commodity data is in
-    text lines with positional columns that pdfplumber collapses to single spaces."""
+    text lines with positional columns that pdfplumber collapses to single spaces.
+    Also collects continuation lines (wrapped variety/commodity text between entries)."""
     col_boundaries = config.get("commodity_column_boundaries", [])
     if not col_boundaries:
         return []
 
     chars = page.chars
-    # Identify commodity lines: find ':' chars at x < 45, y > min_y
     min_y = config.get("commodity_min_y", 300)
     colon_chars = sorted(
         [c for c in chars if c['text'] == ':' and c['x0'] < 45 and c['top'] > min_y],
@@ -1083,6 +1156,8 @@ def extract_commodities_by_char_position(page, config):
     )
 
     commodities = []
+    commodity_ys = []
+
     for cc in colon_chars:
         y = cc['top']
         line_chars = sorted(
@@ -1090,12 +1165,10 @@ def extract_commodities_by_char_position(page, config):
             key=lambda ch: ch['x0']
         )
 
-        # Check this is a commodity line (starts with digits + colon)
         prefix = ''.join(ch['text'] for ch in line_chars if ch['x0'] < cc['x1'] + 3)
         if not re.match(r'\d+:', prefix.strip()):
             continue
 
-        # Extract text at each column boundary
         entry = {}
         for col_cfg in col_boundaries:
             field = col_cfg["field"]
@@ -1106,12 +1179,58 @@ def extract_commodities_by_char_position(page, config):
             if field != "_skip":
                 entry[field] = value
 
-        # Ensure all standard commodity fields present
         for std_field in ("site", "commodity", "variety", "amount_grown",
                           "est_production", "harvest_season",
                           "season_altering_device", "months_in_storage"):
             entry.setdefault(std_field, "")
         commodities.append(entry)
+        commodity_ys.append(y)
+
+    if not commodities:
+        return commodities
+
+    commodity_col = next((cb for cb in col_boundaries if cb["field"] == "commodity"), None)
+    variety_col = next((cb for cb in col_boundaries if cb["field"] == "variety"), None)
+    if not commodity_col and not variety_col:
+        return commodities
+
+    stop_patterns = config.get("continuation_stop_patterns", [])
+
+    from collections import defaultdict
+    for ci in range(len(commodities)):
+        y_start = commodity_ys[ci] + 3
+        y_end = commodity_ys[ci + 1] - 3 if ci + 1 < len(commodity_ys) else commodity_ys[ci] + 200
+
+        cont_by_y = defaultdict(list)
+        for ch in chars:
+            if y_start < ch['top'] < y_end:
+                cont_by_y[round(ch['top'])].append(ch)
+
+        for cy in sorted(cont_by_y.keys()):
+            line_chs = sorted(cont_by_y[cy], key=lambda ch: ch['x0'])
+            if not line_chs or line_chs[0]['x0'] < 50:
+                break
+
+            full_text = ''.join(ch['text'] for ch in line_chs).strip()
+            if stop_patterns and any(sp in full_text for sp in stop_patterns):
+                break
+
+            if commodity_col:
+                comm_text = ''.join(
+                    ch['text'] for ch in line_chs
+                    if ch['x0'] >= commodity_col['x_min'] and ch['x0'] < commodity_col['x_max']
+                ).strip()
+                if comm_text:
+                    commodities[ci]["commodity"] = (commodities[ci]["commodity"] + " " + comm_text).strip()
+
+            if variety_col:
+                var_text = ''.join(
+                    ch['text'] for ch in line_chs
+                    if ch['x0'] >= variety_col['x_min'] and ch['x0'] < variety_col['x_max']
+                ).strip()
+                if var_text:
+                    prev = commodities[ci]["variety"]
+                    commodities[ci]["variety"] = (prev + " " + var_text).strip() if prev else var_text
 
     return commodities
 
@@ -1146,6 +1265,7 @@ def extract_page_table_based(page, county_config):
         result["producer"] = producer
 
     tables_config = county_config.get("tables", {})
+    last_data_table = county_config.get("_last_data_table", None)
 
     for table in tables:
         if not table:
@@ -1159,11 +1279,12 @@ def extract_page_table_based(page, county_config):
             # previous page's incomplete table, the tail rows contain the real data.
             if len(table) > 1:
                 tail = table[1:]  # drop the repeat-header row
-                cont_name, cont_cfg, force_h0 = find_continuation_config(tail, tables_config)
+                cont_name, cont_cfg, force_h0 = find_continuation_config(tail, tables_config, last_data_table)
                 if cont_name:
                     cont_maps_to = cont_cfg.get("maps_to", cont_name)
                     data = _apply_continuation(tail, cont_cfg, force_h0, cont_maps_to, result)
                     if data:
+                        last_data_table = (cont_name, cont_cfg)
                         log(f"    INFO: Continuation data rescued from page-repeat table "
                             f"'{cont_name}' ({len(data)} rows → {cont_maps_to})", also_print=False)
             continue
@@ -1192,6 +1313,7 @@ def extract_page_table_based(page, county_config):
                 result.setdefault("commodities", []).extend(data)
             else:
                 result[maps_to] = data
+            last_data_table = (table_name, table_cfg)
 
         elif table_type == "list":
             result[maps_to] = process_list(table, table_cfg)
@@ -1308,10 +1430,11 @@ def extract_page_table_based(page, county_config):
 
             if not pattern_matched:
                 # Try page-break continuation: table title was on prior page.
-                cont_name, cont_cfg, force_h0 = find_continuation_config(table, tables_config)
+                cont_name, cont_cfg, force_h0 = find_continuation_config(table, tables_config, last_data_table)
                 if cont_name:
                     cont_maps_to = cont_cfg.get("maps_to", cont_name)
                     data = _apply_continuation(table, cont_cfg, force_h0, cont_maps_to, result)
+                    last_data_table = (cont_name, cont_cfg)
                     log(f"    INFO: Page-break continuation for '{cont_name}'"
                         f" ({len(data)} rows → {cont_maps_to})", also_print=False)
                 else:
@@ -1330,6 +1453,7 @@ def extract_page_table_based(page, county_config):
                     if rows:
                         result[table_name] = rows
 
+    county_config["_last_data_table"] = last_data_table
     return result
 
 def extract_page_text_based(page, county_config):

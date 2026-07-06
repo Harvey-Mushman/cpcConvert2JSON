@@ -1,0 +1,107 @@
+{
+  "county": "SAN BERNARDINO",
+  "generated_date": "2026-05-14",
+  "generated_with_model": "claude-opus-4-6",
+  "form_revision": "51-049M",
+  "extraction_method": "text_based",
+  "notes": "San Bernardino CPCs are almost entirely free text, similar to San Diego and Santa Barbara formats. Certificate header and producer info are interleaved in a two-column free-text layout on page 1. Production sites are in a paired two-column table (Site # / Site Address | Site # / Site Address). Storage locations appear as a single line section. Authorized counties are listed in a multi-column row. Producers sell-for and selling-for-me are in a side-by-side layout with ISSUING COUNTY/CERTIFICATE NO/DATE DECLARED sub-headers. Commodities are numbered rows with colon-separated line numbers (e.g. '1: 1 BROCCOLI...'). The first pdfplumber table is the signature/certification boilerplate. The second table is PRODUCTION SITE(s). Commodity data is parsed from page text as positional columns. A '*** LAST ENTRY' marker signals end of commodity data.",
+  "page_repeat_prefixes": [],
+  "additional_stop_labels": [
+    "Receipt No.",
+    "Amount"
+  ],
+  "certificate_fields_from_text": {
+    "ISSUING COUNTY": "issuing_county",
+    "CERTIFICATE NO": "certificate_number",
+    "ISSUING DATE": "issuing_date",
+    "EXPIRATION DATE": "expiration_date",
+    "AMENDED DATE": "amended_date",
+    "COPIES ISSUED": "certified_copies_made"
+  },
+  "producer_fields_from_text": {
+    "NAME": "name",
+    "DBA": "dba",
+    "ADDRESS": "address",
+    "CITY": "city_state_zip",
+    "PHONE(bus.)": "phone_business",
+    "PHONE(cell)": "phone_cell",
+    "EMAIL": "email"
+  },
+  "tables": {
+    "I have reviewed this certificate and certify that the information provided is true and correct. I further certify that I am knowledgeable and intend to produce in accordance with good agricultural practices as published by the department. See http://www.cdfa.ca.gov/is/i_&_c/cfm.html for copy of guidelines. I am aware I must also comply with any other local, state or federal laws. I understand that violations of these regulations may subject me to criminal and/or civil penalties, including fines, suspension and/or revocation of this Certificate and/or my privilege to participate in certified farmers' markets. Certified Producer's Signature": {
+      "type": "ignore"
+    },
+    "PRODUCTION SITE(s)": {
+      "type": "data_table",
+      "maps_to": "production_sites",
+      "column_map": {
+        "Site #": "site_number",
+        "Site Address": "address"
+      }
+    }
+  },
+  "table_patterns": {
+    "production_sites_table": {
+      "detection": "first_cell_contains",
+      "contains": "PRODUCTION SITE",
+      "type": "paired_sites",
+      "desc_pattern": "^(\\d+)\\.?\\s*(.+?)\\s+(?:APN\\s+([\\d\\-]+))?$",
+      "maps_to": "production_sites"
+    }
+  },
+  "text_sections": {
+    "storage_locations": {
+      "start": "STORAGE LOCATION(s)",
+      "end": "AUTHORIZED COUNTY(IES)",
+      "maps_to": "storage_locations",
+      "parser": "lines"
+    },
+    "authorized_counties": {
+      "start": "authorized counties listed on this certificate.",
+      "end": "Name(s) of the Producer(s)",
+      "maps_to": "authorized_counties",
+      "parser": "whitespace_list"
+    },
+    "producers_i_sell_for": {
+      "start": "Holder May Sell FOR:",
+      "end": "Site#",
+      "maps_to": "producers_i_sell_for",
+      "skip_if_text": "NONE",
+      "parser": "tabular_lines",
+      "columns": [
+        "name",
+        "certificate_number",
+        "date_declared"
+      ]
+    },
+    "producers_selling_for_me": {
+      "start": "SELL the Certificate Holder's Product:",
+      "end": "Site#",
+      "maps_to": "producers_selling_for_me",
+      "skip_if_text": "NONE",
+      "parser": "tabular_lines",
+      "columns": [
+        "name",
+        "certificate_number",
+        "date_declared"
+      ]
+    },
+    "commodities": {
+      "start": "Device",
+      "end": "*** LAST ENTRY",
+      "maps_to": "commodities",
+      "parser": "numbered_commodities"
+    }
+  },
+  "commodity_line_pattern": "^\\d+:\\s+(\\d+)\\s+(.+?)\\s+(\\d[\\d,.]*\\s+(?:SQ FT|ACRES|TREES|PLANTS|HIVES|UNITS|BUSHES|VINES))\\s+(\\d{2}/\\d{2}\\s*-\\s*\\d{2}/\\d{2})\\s+(\\d[\\d,.]*\\s+(?:LBS|TONS|GALLONS|DOZEN|BUNCHES|EACH|FLATS|PINTS|QUARTS))(?:\\s+(\\d+))?(?:\\s+(.+))?$",
+  "commodity_field_order": [
+    "site",
+    "commodity_variety",
+    "amount_grown",
+    "harvest_season",
+    "est_production",
+    "months_in_storage",
+    "season_altering_device"
+  ],
+  "last_entry_marker": "*** LAST ENTRY"
+}

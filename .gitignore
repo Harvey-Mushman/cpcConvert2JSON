@@ -11,3 +11,9 @@ conversion_log.txt
 
 # Backups
 BkUp/
+
+# Python cache
+__pycache__/
+
+# Prior normalized output backup
+json_normalized.v1/

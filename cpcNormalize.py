@@ -1,5 +1,6 @@
 import json
 import re
+import sqlite3
 from pathlib import Path
 
 # ── CONFIGURATION ────────────────────────────────────────────
@@ -7,6 +8,7 @@ JSON_OUTPUT_FOLDER = Path("./json_output")
 NORMALIZED_FOLDER = Path("./json_normalized")
 NORMALIZE_CONFIGS_FOLDER = Path("./normalize_configs")
 GOLD_STANDARD_FILE = NORMALIZE_CONFIGS_FOLDER / "GOLD_STANDARD.json"
+DB_FILE = Path("./cpc.db")
 NORMALIZED_FOLDER.mkdir(exist_ok=True)
 
 # Month names are universal — the only hardcoded map
@@ -65,14 +67,41 @@ def load_county_config(county, gold):
     return merged, path.name
 
 
-# ── NORMALIZATION FUNCTIONS ──────────────────────────────────
+# ── UNIT NORMALIZATION (database-backed) ────────────────────
+
+def load_unit_map_from_db():
+    """Load alias→unit_name mapping from the database."""
+    if not DB_FILE.exists():
+        print(f"ERROR: {DB_FILE} not found. Run cpcBuildDB.py first.")
+        exit()
+    conn = sqlite3.connect(DB_FILE)
+    rows = conn.execute("""
+        SELECT a.alias, u.unit_name
+        FROM unit_aliases a JOIN units u ON a.unit_id = u.id
+    """).fetchall()
+    conn.close()
+    return {alias: unit_name for alias, unit_name in rows}
+
+
+_unknown_units_found = set()
+
 
 def normalize_unit(raw_unit, unit_map):
-    """Normalize a unit string using the config unit_map."""
+    """Normalize a unit string using the database.
+    Passes through unknowns with a warning — run cpcUnitsUpdate.py to resolve."""
     if not raw_unit:
         return ""
     clean = raw_unit.strip().rstrip(".").strip().upper()
-    return unit_map.get(clean, raw_unit.strip().rstrip(".").strip())
+
+    if clean in unit_map:
+        return unit_map[clean]
+
+    # Unknown — pass through and warn (once per unit)
+    display = raw_unit.strip().rstrip(".").strip()
+    if clean not in _unknown_units_found:
+        _unknown_units_found.add(clean)
+        print(f"    WARNING: Unknown unit \"{display}\" — run cpcUnitsUpdate.py to resolve")
+    return display
 
 
 def clean_number(s):
@@ -107,6 +136,11 @@ def split_amount_and_unit(value, unit_map):
 
     # Handle "N Row by M feet"
     m = re.match(r'^([\d,.]+)\s+[Rr]ow\s+by\s+([\d,.]+)\s+(?:ft|feet)', value, re.IGNORECASE)
+    if m:
+        return f"{clean_number(m.group(1))} x {clean_number(m.group(2))}", "Row Ft"
+
+    # Handle "NR X M FT" or "N X M FT" (Fresno-style row feet, R attached to number)
+    m = re.match(r'^([\d,.]+)R?\s*(?:x|X)\s*([\d,.]+)\s*(?:ft|feet)\b', value, re.IGNORECASE)
     if m:
         return f"{clean_number(m.group(1))} x {clean_number(m.group(2))}", "Row Ft"
 
@@ -323,23 +357,40 @@ def normalize_commodity(comm, config):
             r'\s*[-,]\s*' + re.escape(suffix) + r'\s*$', '',
             result.get("commodity", ""), flags=re.IGNORECASE).strip()
 
-    # Split "Commodity - Variety" or "Commodity, Variety" when variety is empty
-    if not result.get("variety", "").strip():
-        commodity = result.get("commodity", "")
-        if " - " in commodity:
-            parts = commodity.split(" - ", 1)
-            result["commodity"] = parts[0].strip()
-            result["variety"] = parts[1].strip()
-        elif ", " in commodity:
-            parts = commodity.split(", ", 1)
-            result["commodity"] = parts[0].strip()
-            result["variety"] = parts[1].strip()
+    # Split commodity on separator (dash, slash, comma)
+    # If variety already exists, prepend the split-off piece to preserve data
+    commodity = result.get("commodity", "")
+    for sep in (r'\s*-\s+', r'\s*/\s*', r'\s*,\s*'):
+        m = re.search(sep, commodity)
+        if m:
+            split_variety = commodity[m.end():].strip()
+            result["commodity"] = commodity[:m.start()].strip()
+            existing_variety = result.get("variety", "").strip()
+            if existing_variety:
+                result["variety"] = f"{split_variety} {existing_variety}"
+            else:
+                result["variety"] = split_variety
+            break
 
     # Promote variety to commodity when commodity is just a category name
     drop_names = {n.strip().lower() for n in config.get("drop_empty_commodity_names", [])}
     if result.get("commodity", "").strip().lower() in drop_names and result.get("variety", "").strip():
         result["commodity"] = result["variety"].strip()
         result["variety"] = ""
+
+    # Re-split after promotion (e.g., promoted variety "Orange / Valencia" needs splitting)
+    commodity = result.get("commodity", "")
+    for sep in (r'\s*-\s+', r'\s*/\s*', r'\s*,\s*'):
+        m = re.search(sep, commodity)
+        if m:
+            split_variety = commodity[m.end():].strip()
+            result["commodity"] = commodity[:m.start()].strip()
+            existing_variety = result.get("variety", "").strip()
+            if existing_variety:
+                result["variety"] = f"{split_variety} {existing_variety}"
+            else:
+                result["variety"] = split_variety
+            break
 
     # Strip redundant "Nursery Stock" from commodity when both units are plant-based
     nursery_units = set(config.get("nursery_stock_units", []))
@@ -361,6 +412,23 @@ def normalize_commodity(comm, config):
 
     mis = result.get("months_in_storage", "")
     result["months_in_storage"] = "" if is_empty_value(mis, skip_list) else mis.strip()
+
+    # Clear variety if it matches an empty/placeholder value
+    variety = result.get("variety", "")
+    if is_empty_value(variety, skip_list):
+        result["variety"] = ""
+
+    # Title case commodity and variety
+    for fld in ("commodity", "variety"):
+        val = result.get(fld, "")
+        if val:
+            result[fld] = val.title()
+
+    # Normalize commodity names (plural → singular, etc.)
+    name_map = config.get("commodity_name_map", {})
+    commodity = result.get("commodity", "")
+    if commodity in name_map:
+        result["commodity"] = name_map[commodity]
 
     # Ensure all standard fields present from config
     for field in config.get("standard_commodity_fields", []):
@@ -451,6 +519,11 @@ def normalize_file(data, config):
 # ── MAIN ─────────────────────────────────────────────────────
 
 gold = load_gold_standard()
+
+# Load unit map from database (single source of truth)
+db_unit_map = load_unit_map_from_db()
+gold["unit_map"] = db_unit_map
+print(f"Units loaded from database: {len(set(db_unit_map.values()))} units, {len(db_unit_map)} aliases")
 
 all_files = sorted(JSON_OUTPUT_FOLDER.glob("*.json"))
 if not all_files:

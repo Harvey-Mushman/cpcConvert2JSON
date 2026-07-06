@@ -1,0 +1,6 @@
+{
+  "notes": "Fresno County. Form 51-049C (Rev.02/00). Producer phone_cell maps to phone_alternate. Amount and production are combined fields needing split.",
+  "producer_field_map": {"phone_cell": "phone_alternate"},
+  "commodity_field_map": {},
+  "certificate_field_map": {}
+}

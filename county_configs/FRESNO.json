@@ -1,0 +1,107 @@
+{
+  "county": "FRESNO",
+  "generated_date": "2026-07-05",
+  "generated_with_model": "claude-opus-4-6",
+  "form_revision": "51-049C (Rev.02/00)",
+  "extraction_method": "text_based",
+  "notes": "Fresno County uses form 51-049C (Rev.02/00). Certificate header and producer info are in free-text labels. Production sites are numbered inline (1. addr). Storage locations are lettered inline (A. addr) with months-in-storage. Commodity data rows are NOT in pdfplumber tables — only the header row is a table. Data is extracted via character x-positions. Varieties and commodity names wrap to continuation lines. Authorized counties and sell-for sections are on the last page. Phone labels: (res.) = cell, (bus.) = business. The form has a typo 'certifticate' in the authorized counties section.",
+
+  "page_repeat_prefixes": [],
+
+  "additional_stop_labels": [
+    "CERTIFICATE NO.",
+    "COUNTY FEE",
+    "ISSUING DATE",
+    "EXPIRATION DATE",
+    "AMENDED DATE",
+    "COPIES ISSUED",
+    "This certificate is issued"
+  ],
+
+  "certificate_fields_from_text": {
+    "Issuing County": "issuing_county",
+    "CERTIFICATE NO.": "certificate_number",
+    "COUNTY FEE": "county_fee",
+    "ISSUING DATE": "issuing_date",
+    "EXPIRATION DATE": "expiration_date",
+    "AMENDED DATE": "amended_date",
+    "COPIES ISSUED": "certified_copies_made"
+  },
+
+  "producer_fields_from_text": {
+    "NAME": "name",
+    "DBA": "dba",
+    "ADDRESS": "address",
+    "City": "city",
+    "Zip Code": "zip_code",
+    "PHONE:(res.)": "phone_cell",
+    "PHONE: (bus.)": "phone_business"
+  },
+
+  "tables": {
+    "FOR OFFICIAL USE ONLY": {
+      "type": "ignore"
+    },
+    "#": {
+      "type": "ignore"
+    },
+    "I have reviewed this certificate and certify that the information provided is true and correct. I further certify that I am knowledgeable and intend to produce in accordance with good agricultural practices as published by the department. See http://www.cdfa.ca.gov/is/i__c/cfm.html for copy of guidelines. I am aware I must also comply with any other local, state, or federal laws. I understand that violations of these regulations may subject me to criminal and/or civil penalties, including fines, suspension and/or revocation of this Certificate and/or my privilege to participate in certified farmersâ markets. Certified Producer's Signature": {
+      "type": "ignore"
+    }
+  },
+
+  "table_patterns": {},
+
+  "text_sections": {
+    "production_sites": {
+      "start": "PRODUCTION SITES(s)",
+      "end": "STORAGE LOCATION(s)",
+      "maps_to": "production_sites",
+      "parser": "numbered_sites"
+    },
+    "storage_locations": {
+      "start": "STORAGE LOCATION(s)",
+      "end": "# SITE",
+      "maps_to": "storage_locations",
+      "parser": "lettered_sites"
+    },
+    "authorized_counties": {
+      "start": "listed on this certifticate.",
+      "end": "Producer(s) I am authorized to sell FOR:",
+      "maps_to": "authorized_counties",
+      "parser": "comma_list"
+    },
+    "producers_i_sell_for": {
+      "start": "Producer(s) I am authorized to sell FOR:",
+      "end": "Producer(s) authorized to sell FOR ME:",
+      "maps_to": "producers_i_sell_for",
+      "parser": "regex_lines",
+      "skip_header_rows": 1,
+      "line_pattern": "^\\d+\\.\\s+(.+?)\\s{2,}(\\S+)\\s{2,}(.+)$",
+      "columns": ["name", "certificate_number", "date_declared"]
+    },
+    "producers_selling_for_me": {
+      "start": "Producer(s) authorized to sell FOR ME:",
+      "end": "I have reviewed this certificate",
+      "maps_to": "producers_selling_for_me",
+      "parser": "regex_lines",
+      "skip_header_rows": 1,
+      "line_pattern": "^\\d+\\.\\s+(.+?)\\s{2,}(\\S+)\\s{2,}(.+)$",
+      "columns": ["name", "certificate_number", "date_declared"]
+    }
+  },
+
+  "commodity_column_boundaries": [
+    {"field": "_skip",                  "x_min": 0,   "x_max": 50},
+    {"field": "site",                   "x_min": 50,  "x_max": 80},
+    {"field": "commodity",              "x_min": 80,  "x_max": 170},
+    {"field": "variety",                "x_min": 170, "x_max": 269},
+    {"field": "amount_grown",           "x_min": 269, "x_max": 318},
+    {"field": "harvest_season",         "x_min": 318, "x_max": 420},
+    {"field": "est_production",         "x_min": 420, "x_max": 475},
+    {"field": "season_altering_device", "x_min": 475, "x_max": 538},
+    {"field": "months_in_storage",      "x_min": 538, "x_max": 600}
+  ],
+  "commodity_min_y": 195,
+  "continuation_stop_patterns": ["LAST ENTRY"]
+}

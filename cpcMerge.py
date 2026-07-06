@@ -23,11 +23,11 @@ prior_folders = [f for f in all_folders if f.name not in cert_files]
 
 # Build the menu
 print("Which CPC to merge?")
+print(f"\n  0 - Merge ALL ({len(all_folders)} folders)")
 idx = 1
 
 if new_folders:
     print(f"\n  --- New (in certificates/) ---")
-    print(f"  0 - Merge ALL new ({len(new_folders)} files)")
     new_start = idx
     for f in new_folders:
         print(f"  {idx} - {f.name}")
@@ -43,11 +43,7 @@ if prior_folders:
 total = idx - 1
 choice = input("\nEnter number: ").strip()
 if choice == "0":
-    if new_folders:
-        folders = new_folders
-    else:
-        print("No new CPCs found in certificates/. Exiting.")
-        exit()
+    folders = all_folders
 elif choice.isdigit() and 1 <= int(choice) <= total:
     # Map choice number back to the correct folder
     c = int(choice)
