@@ -176,6 +176,10 @@ def normalize_harvest_season(season, config):
         return ""
 
     season = season.strip()
+
+    if config.get("strip_harvest_year"):
+        season = re.sub(r'\s+\d{4}\s*$', '', season)
+
     aliases = config.get("harvest_season_aliases", {})
 
     # Check aliases first
