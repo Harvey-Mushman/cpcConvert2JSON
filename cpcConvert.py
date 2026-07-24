@@ -189,6 +189,18 @@ def process_key_value(table, table_cfg):
                 result[standard_key] = value
     return result
 
+def _ws_invariant_lookup(col_map, header_text):
+    """Look up header_text in col_map, ignoring internal whitespace differences."""
+    norm = normalize(header_text)
+    if norm in col_map:
+        return col_map[norm]
+    collapsed = re.sub(r'\s', '', norm)
+    for key, value in col_map.items():
+        if re.sub(r'\s', '', key) == collapsed:
+            return value
+    return norm
+
+
 def process_data_table(table, table_cfg):
     """Title row, header row, data rows.
     Use header_row=0 in config when the table has no separate title — row 0 IS the header."""
@@ -200,7 +212,7 @@ def process_data_table(table, table_cfg):
         header_idx = find_header_row(table)
     if header_idx >= len(table):
         return []
-    headers = [col_map.get(normalize(h), normalize(h)) for h in table[header_idx]]
+    headers = [_ws_invariant_lookup(col_map, h) for h in table[header_idx]]
     rows = []
     for row in table[header_idx + 1:]:
         if not any(c and normalize(c) for c in row):
@@ -1091,7 +1103,9 @@ def find_continuation_config(table, tables_config, last_data_table=None):
             col_map = tcfg.get("column_map", {})
             if not col_map:
                 continue
-            matches = sum(1 for cell in first_row_cells if cell in col_map)
+            col_map_collapsed = {re.sub(r'\s', '', k): v for k, v in col_map.items()}
+            matches = sum(1 for cell in first_row_cells
+                          if cell in col_map or re.sub(r'\s', '', cell) in col_map_collapsed)
             if matches >= 2 and matches >= len(first_row_cells) // 2:
                 return cfg_name, tcfg, True
 

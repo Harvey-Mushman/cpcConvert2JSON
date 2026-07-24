@@ -1,6 +1,7 @@
 import json
 import re
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 # ── CONFIGURATION ────────────────────────────────────────────
@@ -102,6 +103,29 @@ def normalize_unit(raw_unit, unit_map):
         _unknown_units_found.add(clean)
         print(f"    WARNING: Unknown unit \"{display}\" — run cpcUnitsUpdate.py to resolve")
     return display
+
+
+_DATE_FORMATS = [
+    '%B %d, %Y',     # April 22, 2025
+    '%b %d, %Y',     # Apr 22, 2025
+    '%m/%d/%Y',      # 04/22/2025
+    '%m-%d-%Y',      # 04-22-2025
+    '%Y-%m-%d',      # 2025-04-22
+]
+
+
+def normalize_date(value):
+    """Parse common date formats and return MM/DD/YYYY. Returns empty string for blank/unparseable values."""
+    if not value or not value.strip():
+        return ""
+    cleaned = value.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            dt = datetime.strptime(cleaned, fmt)
+            return dt.strftime('%m/%d/%Y')
+        except ValueError:
+            continue
+    return cleaned
 
 
 def clean_number(s):
@@ -462,6 +486,11 @@ def normalize_file(data, config):
         else:
             result[field] = ""
 
+    # Normalize date fields to MM/DD/YYYY
+    for date_field in ("issuing_date", "expiration_date", "amended_date"):
+        if date_field in result:
+            result[date_field] = normalize_date(result[date_field])
+
     # Producer
     result["producer"] = normalize_producer(data.get("producer", {}), config)
 
@@ -515,7 +544,13 @@ def normalize_file(data, config):
             return False
         return all(not (c.get(f) or "").strip() for f in data_fields)
 
-    result["commodities"] = [c for c in normalized if not _is_empty_placeholder(c)]
+    def _is_page_footer_marker(c):
+        combined = " ".join((c.get(f) or "") for f in c).upper()
+        return "END OF ENTRY" in combined
+
+    result["commodities"] = [c for c in normalized
+                             if not _is_empty_placeholder(c)
+                             and not _is_page_footer_marker(c)]
 
     return result
 
@@ -566,6 +601,6 @@ for json_file in files:
     out_file.write_text(json.dumps(normalized, indent=2, ensure_ascii=False))
 
     commodity_count = len(normalized.get("commodities", []))
-    print(f"  {commodity_count} commodities -> {out_file.name}")
+    print(f"  {commodity_count} commodities -> {out_file.resolve()}")
 
 print("\nNormalization complete.")
