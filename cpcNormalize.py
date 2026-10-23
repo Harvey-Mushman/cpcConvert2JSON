@@ -84,6 +84,27 @@ def load_unit_map_from_db():
     return {alias: unit_name for alias, unit_name in rows}
 
 
+def load_known_commodities_from_db():
+    """Load the distinct commodity names (upper case) from the items table."""
+    conn = sqlite3.connect(DB_FILE)
+    rows = conn.execute("SELECT DISTINCT commodity FROM items WHERE commodity != ''").fetchall()
+    conn.close()
+    return sorted({r[0].strip().upper() for r in rows})
+
+
+def _split_by_known_commodity(result, known):
+    """Split "BROCCOLI PURPLE SPROUTING" into commodity "BROCCOLI" + variety
+    "PURPLE SPROUTING" using the longest leading run of words that is a known
+    commodity (plural allowed). Unknown names ("SNOW PEAS") are left whole."""
+    words = result.get("commodity", "").split()
+    for n in range(len(words) - 1, 0, -1):
+        head = " ".join(words[:n]).upper()
+        if head in known or re.sub(r'E?S$', '', head) in known:
+            result["commodity"] = " ".join(words[:n])
+            result["variety"] = " ".join(words[n:])
+            return
+
+
 _unknown_units_found = set()
 
 
@@ -247,6 +268,10 @@ def normalize_month(text):
     return MONTH_MAP.get(text.upper().strip(), "")
 
 
+_MONTHS = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
+_VALID_SEASON_RE = re.compile(rf'^({_MONTHS})(-({_MONTHS}))?$')
+
+
 def normalize_harvest_season(season, config):
     """Normalize harvest season using config aliases."""
     if not season or not season.strip():
@@ -264,6 +289,10 @@ def normalize_harvest_season(season, config):
     for alias_key, alias_val in aliases.items():
         if upper_clean == alias_key.replace(" ", ""):
             return alias_val
+
+    # Month/day dates ("01/15 -04/30", San Bernardino) -> month names ("Jan -Apr")
+    season = re.sub(r'\b(0?[1-9]|1[0-2])/\d{1,2}\b(?!/)',
+                    lambda m: _MONTHS.split("|")[int(m.group(1)) - 1], season)
 
     # Replace en-dash, em-dash, forward slash with hyphen
     season = season.replace("\u2013", "-").replace("\u2014", "-").replace("/", "-")
@@ -445,6 +474,10 @@ def normalize_commodity(comm, config):
     while _split_off_variety(result, (r'\s*-\s+', r'\s*,\s*')):
         pass
 
+    # Counties that join commodity and variety with only a space ("GARLIC RED")
+    if config.get("split_commodity_by_known_items") and not result.get("variety", "").strip():
+        _split_by_known_commodity(result, set(config.get("known_commodities", [])))
+
     # Promote variety to commodity when commodity is just a category name
     drop_names = {n.strip().lower() for n in config.get("drop_empty_commodity_names", [])}
     if result.get("commodity", "").strip().lower() in drop_names and result.get("variety", "").strip():
@@ -466,6 +499,11 @@ def normalize_commodity(comm, config):
     # Normalize harvest season using config
     result["harvest_season"] = normalize_harvest_season(
         result.get("harvest_season", ""), config)
+    season = result["harvest_season"]
+    if season and not _VALID_SEASON_RE.match(season):
+        print(f"    WARNING: Unrecognized harvest season \"{season}\" for "
+              f"{result.get('commodity', '')} {result.get('variety', '')}".rstrip()
+              + " — check the source CPC")
 
     # Clean season_altering_device and months_in_storage using config skip list
     sad = result.get("season_altering_device", "")
@@ -485,11 +523,17 @@ def normalize_commodity(comm, config):
         if val:
             result[fld] = title_case_name(val)
 
-    # Normalize commodity names (plural → singular, etc.)
+    # Normalize commodity names (plural → singular, etc.). A mapped value of
+    # "Commodity | Variety" ("Snow Peas" -> "Pea | Snow") also supplies the variety,
+    # prepended to any existing variety.
     name_map = config.get("commodity_name_map", {})
     commodity = result.get("commodity", "")
     if commodity in name_map:
-        result["commodity"] = name_map[commodity]
+        new_commodity, _, new_variety = name_map[commodity].partition("|")
+        result["commodity"] = new_commodity.strip()
+        if new_variety.strip():
+            existing = result.get("variety", "").strip()
+            result["variety"] = f"{new_variety.strip()} {existing}".strip()
 
     # Ensure all standard fields present from config
     for field in config.get("standard_commodity_fields", []):
@@ -595,6 +639,7 @@ gold = load_gold_standard()
 # Load unit map from database (single source of truth)
 db_unit_map = load_unit_map_from_db()
 gold["unit_map"] = db_unit_map
+gold["known_commodities"] = load_known_commodities_from_db()
 print(f"Units loaded from database: {len(set(db_unit_map.values()))} units, {len(db_unit_map)} aliases")
 
 all_files = sorted(JSON_OUTPUT_FOLDER.glob("*.json"))

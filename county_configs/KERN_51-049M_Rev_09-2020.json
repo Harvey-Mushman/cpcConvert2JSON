@@ -3,9 +3,12 @@
   "generated_date": "2026-03-23",
   "generated_with_model": "claude-sonnet-4-6",
   "form_revision": "51-049M (Rev 09/2020)",
-  "notes": "Kern County form has several non-standard structures. Certificate header garbles due to two-column PDF overlap; only EXPIRATION DATE, AMENDED DATE, CERTIFIED COPIES MADE, and ISSUING COUNTY are readable from text. Producer info is free text. Production sites are a 4-column paired grid with no title row (first cell is the first site). Storage locations have no title row; each cell contains 'Storage Location (X): address'. Authorized counties are a multi-cell grid with no title row; first cell is the first county name. Producers/reps are a single 6-column split table. Commodity table has no title row — SITE # IS the header row.",
+  "notes": "Kern County form has several non-standard structures. Certificate header garbles due to two-column PDF overlap; only EXPIRATION DATE, AMENDED DATE, CERTIFIED COPIES MADE, and ISSUING COUNTY are readable from text. Some Kern CPCs (Word documents saved as PDF) are not garbled, so CERTIFICATE NO. and ISSUING DATE are also read from text; on garbled pages those labels don't appear in the text and kern_dual_column supplies them. Producer info is free text. Production sites are a 4-column paired grid with no title row (first cell is the first site). Storage locations have no title row; each cell contains 'Storage Location (X): address'. Authorized counties are a multi-cell grid with no title row; first cell is the first county name. Producers/reps are a single 6-column split table. Commodity table has no title row — SITE # IS the header row.",
 
   "certificate_header_type": "kern_dual_column",
+
+  "commodity_skip_row_values": ["AMENDED"],
+  "commodity_skip_row_values_notes": "Amended Kern CPCs (Word documents) mark the change with rows that have AMENDED in every column and the amendment date in the variety column. A commodity row is dropped only when every filled cell (ignoring '---' and dates) is one of these values. The amendment dates are already captured from the AMENDED DATE header.",
 
   "page_repeat_prefixes": [
     "I have reviewed this certificate",
@@ -16,6 +19,8 @@
 
   "certificate_fields_from_text": {
     "ISSUING COUNTY":        "issuing_county",
+    "CERTIFICATE NO.":       "certificate_number",
+    "ISSUING DATE":          "issuing_date",
     "EXPIRATION DATE":       "expiration_date",
     "AMENDED DATE":          "amended_date",
     "CERTIFIED COPIES MADE": "certified_copies_made"

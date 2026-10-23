@@ -1,0 +1,7 @@
+{
+  "notes": "San Bernardino County. Text-based form like San Diego. Producer phone labels PHONE(bus.)/PHONE(cell). Commodity and variety are joined with only a space ('GARLIC RED'), so they are split using the known commodity names in the items table. Harvest season is a month/day range ('01/15 -04/30').",
+  "producer_field_map": {"phone_cell": "phone_alternate"},
+  "commodity_field_map": {},
+  "certificate_field_map": {},
+  "split_commodity_by_known_items": true
+}

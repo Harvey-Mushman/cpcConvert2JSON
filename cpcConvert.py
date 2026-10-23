@@ -96,6 +96,30 @@ def _is_end_of_list_row(comm):
     return bool(END_OF_LIST_RE.search(text)) and set(words) <= _END_OF_LIST_WORDS
 
 
+def drop_config_skip_rows(pages, config):
+    """Drop commodity rows whose filled cells are all values listed in the county
+    config's "commodity_skip_row_values" (e.g. Kern's AMENDED marker rows).
+    Placeholder cells ("---") and dates ("08/07/2025") are ignored."""
+    skip = {v.strip().upper() for v in config.get("commodity_skip_row_values", [])}
+    if not skip:
+        return pages
+    for data in pages:
+        rows = data.get("commodities", [])
+        kept = []
+        for comm in rows:
+            filled = [str(v).strip().upper() for v in comm.values()
+                      if str(v).strip()
+                      and not re.fullmatch(r'[\W_]+', str(v).strip())
+                      and not re.fullmatch(r'\d{1,2}/\d{1,2}/\d{2,4}', str(v).strip())]
+            if filled and all(v in skip for v in filled):
+                continue
+            kept.append(comm)
+        if len(kept) != len(rows):
+            log(f"  Dropped {len(rows) - len(kept)} row(s) matching commodity_skip_row_values")
+            data["commodities"] = kept
+    return pages
+
+
 def clean_commodities(pages):
     """Universal post-extraction cleanup for commodity fields across all counties.
     Takes every page of one CPC so the commodity/variety separator is chosen per file."""
@@ -757,9 +781,23 @@ def extract_cert_fields_from_text(page_text, config):
         m = re.search(pattern, page_text, re.IGNORECASE)
         if m:
             value = m.group(1).strip()
+            if standard_key.endswith("_date"):
+                value = _leading_dates(value)
             if value:
                 result[standard_key] = value
     return result
+
+
+_DATE_TOKEN = (r'(?:\d{1,2}/\d{1,2}/\d{2,4}|\d{4}-\d{2}-\d{2}|'
+               r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})')
+
+
+def _leading_dates(value):
+    """Keep only the date(s) at the start of a date field's value, dropping
+    adjacent-column text on the same line ("6/4/2025 2944157 $110.00" -> "6/4/2025").
+    A list of dates ("8/8/25, 1/12/26") is kept whole. Non-date values are unchanged."""
+    m = re.match(rf'^{_DATE_TOKEN}(?:\s*[,;&]\s*{_DATE_TOKEN})*', value, re.IGNORECASE)
+    return m.group(0) if m else value
 
 def _build_label_stop_pattern(config):
     """Build a regex lookahead that stops before any known field label.
@@ -813,19 +851,43 @@ def extract_producer_fields_from_text(page_text, config):
                     all_labels = list(field_map.keys()) + list(config.get("certificate_fields_from_text", {}).keys()) + config.get("additional_stop_labels", [])
                     if next_line and not any(next_line.startswith(l) for l in all_labels):
                         producer[field_name] = next_line
+    # Reject values that can't be what the field holds — happens when a value is
+    # blank or redacted and the label's neighbour (or the next line) is picked up.
+    for field_name in list(producer):
+        value = producer[field_name]
+        if field_name == "email" and "@" not in value:
+            log(f"    Dropped producer email {value[:60]!r} (no @)", also_print=False)
+            del producer[field_name]
+        elif field_name.startswith("phone") and len(re.findall(r'\d', value)) < 7:
+            log(f"    Dropped producer {field_name} {value[:60]!r} (not a phone number)", also_print=False)
+            del producer[field_name]
     if "zip_code" in producer:
         producer["zip_code"] = producer["zip_code"].rstrip('- ')
     return producer
 
-def extract_text_sections(page_text, config):
-    """Parse sections from page text using start/end anchors."""
+def extract_text_sections(page_text, config, page=None):
+    """Parse sections from page text using start/end anchors.
+    A section with "x_min"/"x_max" reads only that horizontal band of the page,
+    for side-by-side columns (e.g. the two sell-for lists)."""
     result = {}
+    full_text = page_text
     for section_name, section_cfg in config.get("text_sections", {}).items():
         start_marker = section_cfg.get("start", "")
         end_marker   = section_cfg.get("end", "")
         maps_to      = section_cfg.get("maps_to", section_name)
         parser       = section_cfg.get("parser", "lines")
         skip_text    = section_cfg.get("skip_if_text", "")
+
+        page_text = full_text
+        cropped = page is not None and ("x_min" in section_cfg or "x_max" in section_cfg)
+        if cropped:
+            bbox = (section_cfg.get("x_min", 0), 0, section_cfg.get("x_max", page.width), page.height)
+            page_text = page.crop(bbox).extract_text() or ""
+            # A column band has no natural end, so its end marker is required
+            if end_marker and end_marker not in page_text:
+                log(f"    Section '{section_name}': end marker {end_marker!r} not found in column — skipped",
+                    also_print=False)
+                continue
 
         # Find the section in text
         start_idx = page_text.find(start_marker)
@@ -894,9 +956,20 @@ def extract_text_sections(page_text, config):
                 addr = addr.strip().rstrip(",. ").strip()
                 # Skip if addr is just digits or empty (empty site slot)
                 if addr and re.search(r'[a-zA-Z]', addr):
-                    sites.append({"site_number": num, "description": addr})
+                    site = {"site_number": num, "description": addr}
+                    # "... 92356 APN 044903210" -> address + apn (San Diego-style fields)
+                    apn = re.search(r'\s+APN\s*#?\s*([\d\-]+)\s*$', addr, re.IGNORECASE)
+                    if section_cfg.get("split_apn") and apn:
+                        site = {"site_number": num, "address": addr[:apn.start()].strip(), "apn": apn.group(1)}
+                    sites.append(site)
             if sites:
                 result[maps_to] = sites
+        elif parser == "county_list":
+            # "San Bernardino County Kern County Los Angeles County" -> names without "County"
+            flat = re.sub(r'\s+', ' ', section_text).strip()
+            counties = [c.strip(" ,") for c in re.findall(r'(.+?)\s+County\b,?', flat, re.IGNORECASE)]
+            if counties:
+                result[maps_to] = counties
         elif parser == "lettered_sites":
             # Parse "A. addr B. addr C. addr D." inline lettered format
             # All listed letters are included, even if address is empty
@@ -1210,6 +1283,35 @@ def match_table_pattern(table, pattern_cfg):
 
 # ── PAGE EXTRACTION ──────────────────────────────────────────────
 
+def _split_line_into_columns(line_chars, col_boundaries):
+    """Assign a text line to columns word by word, using each word's center.
+    Column text is often centered, so a long value ("June - Nov") can start a
+    point or two left of its column edge; splitting letter by letter at the
+    edge would put the "J" in the previous column. Original spacing is kept."""
+    words = []  # [text, x0, x1, space_before]
+    pending_space = False
+    for ch in sorted(line_chars, key=lambda c: c['x0']):
+        if not ch['text'].strip():
+            pending_space = True
+            continue
+        if words and not pending_space and ch['x0'] - words[-1][2] <= 1.5:
+            words[-1][0] += ch['text']
+            words[-1][2] = ch['x1']
+        else:
+            words.append([ch['text'], ch['x0'], ch['x1'], pending_space])
+        pending_space = False
+
+    cols = {}
+    for text, x0, x1, space_before in words:
+        center = (x0 + x1) / 2
+        for cb in col_boundaries:
+            if cb["x_min"] <= center < cb["x_max"]:
+                prev = cols.get(cb["field"])
+                cols[cb["field"]] = text if prev is None else prev + (" " if space_before else "") + text
+                break
+    return cols
+
+
 def extract_commodities_by_char_position(page, config):
     """Extract commodity data from free-text lines using character x-positions.
     Used for Santa Barbara and similar counties where commodity data is in
@@ -1240,15 +1342,9 @@ def extract_commodities_by_char_position(page, config):
         if not re.match(r'\d+:', prefix.strip()):
             continue
 
-        entry = {}
-        for col_cfg in col_boundaries:
-            field = col_cfg["field"]
-            x_min = col_cfg["x_min"]
-            x_max = col_cfg["x_max"]
-            col_chars = [ch for ch in line_chars if ch['x0'] >= x_min and ch['x0'] < x_max]
-            value = ''.join(ch['text'] for ch in col_chars).strip()
-            if field != "_skip":
-                entry[field] = value
+        by_col = _split_line_into_columns(line_chars, col_boundaries)
+        entry = {cb["field"]: by_col.get(cb["field"], "")
+                 for cb in col_boundaries if cb["field"] != "_skip"}
 
         for std_field in ("site", "commodity", "variety", "amount_grown",
                           "est_production", "harvest_season",
@@ -1288,19 +1384,14 @@ def extract_commodities_by_char_position(page, config):
             if stop_patterns and any(sp in full_text for sp in stop_patterns):
                 break
 
+            by_col = _split_line_into_columns(line_chs, col_boundaries)
             if commodity_col:
-                comm_text = ''.join(
-                    ch['text'] for ch in line_chs
-                    if ch['x0'] >= commodity_col['x_min'] and ch['x0'] < commodity_col['x_max']
-                ).strip()
+                comm_text = by_col.get("commodity", "")
                 if comm_text:
                     commodities[ci]["commodity"] = (commodities[ci]["commodity"] + " " + comm_text).strip()
 
             if variety_col:
-                var_text = ''.join(
-                    ch['text'] for ch in line_chs
-                    if ch['x0'] >= variety_col['x_min'] and ch['x0'] < variety_col['x_max']
-                ).strip()
+                var_text = by_col.get("variety", "")
                 if var_text:
                     prev = commodities[ci]["variety"]
                     commodities[ci]["variety"] = (prev + " " + var_text).strip() if prev else var_text
@@ -1546,7 +1637,7 @@ def extract_page_text_based(page, county_config):
         result["producer"] = producer
 
     # Text section parsing (authorized counties, reps, producers_i_sell_for, etc.)
-    sections = extract_text_sections(page_text, county_config)
+    sections = extract_text_sections(page_text, county_config, page)
     for key, value in sections.items():
         result[key] = value
 
@@ -2056,6 +2147,7 @@ for input_file in files:
             log(f"  ERROR: Unknown format_type '{format_type}'. Skipping.")
             continue
 
+        drop_config_skip_rows([data], xls_config)
         clean_commodities([data])
 
         # XLS files produce a single output (no pages)
@@ -2134,6 +2226,7 @@ for input_file in files:
             pages.append(extract_page(page, county_config))
 
     # Clean all pages together so file-level patterns (e.g. separator) are consistent
+    drop_config_skip_rows(pages, county_config)
     clean_commodities(pages)
     for page_num, data in enumerate(pages, start=1):
         page_file = pdf_page_folder / f"page_{page_num:03d}.json"
