@@ -26,7 +26,7 @@ print(f"\nPage counts for: {selected.name}")
 print("-" * 40)
 page_total = 0
 for page_file in sorted(selected.glob("page_*.json")):
-    data = json.loads(page_file.read_text())
+    data = json.loads(page_file.read_text(encoding="utf-8"))
     count = 0
     if isinstance(data, dict):
         for k, v in data.items():
@@ -44,7 +44,7 @@ merged_file = json_output_folder / f"{selected.name}.json"
 if merged_file.exists():
     answer = input(f"\nAlso count merged json_output file? (y/n): ").strip().lower()
     if answer == "y":
-        data = json.loads(merged_file.read_text())
+        data = json.loads(merged_file.read_text(encoding="utf-8"))
         merged_total = 0
         for k, v in data.items():
             if k.lower() == "commodities" and isinstance(v, list):

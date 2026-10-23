@@ -29,7 +29,7 @@ def build_database():
             return
         DB_FILE.unlink()
 
-    gold = json.loads(GOLD_STANDARD_FILE.read_text())
+    gold = json.loads(GOLD_STANDARD_FILE.read_text(encoding="utf-8"))
     unit_map = gold.get("unit_map", {})
 
     conn = sqlite3.connect(DB_FILE)

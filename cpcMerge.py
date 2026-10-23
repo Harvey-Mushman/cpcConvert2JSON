@@ -68,7 +68,7 @@ for pdf_folder in folders:
     merged = {}
 
     for page_file in page_files:
-        data = json.loads(page_file.read_text())
+        data = json.loads(page_file.read_text(encoding="utf-8"))
         for key, value in data.items():
             if key in LIST_FIELDS:
                 # Accumulate list fields across all pages
@@ -89,7 +89,7 @@ for pdf_folder in folders:
                     merged[key] = value
 
     output_file = json_output_folder / f"{pdf_folder.name}.json"
-    output_file.write_text(json.dumps(merged, indent=2, ensure_ascii=False))
+    output_file.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
 
     commodity_count = len(merged.get("commodities", []))
     print(f"  {commodity_count} commodities merged into {output_file.name}")

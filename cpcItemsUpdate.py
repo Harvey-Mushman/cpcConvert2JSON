@@ -41,7 +41,7 @@ def build_items():
     unknown_counties = set()
 
     for json_file in all_files:
-        data = json.loads(json_file.read_text())
+        data = json.loads(json_file.read_text(encoding="utf-8"))
 
         county_name = data.get("issuing_county", "").strip().upper()
         county_bit = county_lookup.get(county_name)

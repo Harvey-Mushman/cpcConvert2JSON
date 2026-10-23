@@ -15,7 +15,7 @@ try:
 except ImportError:
     openpyxl = None
 
-api_key = Path("anthropicKey.txt").read_text().strip()
+api_key = Path("anthropicKey.txt").read_text(encoding="utf-8").strip()
 client = anthropic.Anthropic(api_key=api_key)
 
 LOG_FILE = Path("./conversion_log.txt")
@@ -128,7 +128,7 @@ def find_county_config(county, form_revision):
 
     for path in candidates:
         if path.exists():
-            return json.loads(path.read_text()), path
+            return json.loads(path.read_text(encoding="utf-8")), path
     return None, None
 
 def detect_county(page_text, tables):
@@ -1539,7 +1539,7 @@ def extract_page(page, county_config):
 def generate_county_config(county, pdf_path, page1_text, all_table_names):
     existing = {}
     for f in sorted(COUNTY_CONFIGS_FOLDER.glob("*.json")):
-        existing[f.stem] = json.loads(f.read_text())
+        existing[f.stem] = json.loads(f.read_text(encoding="utf-8"))
 
     prompt = f"""You are creating a county config for California Certified Producer's Certificates
 issued by {county} County.
@@ -1632,7 +1632,7 @@ def detect_xls_format(file_path):
             if "CERTNUMBER" in row1 or "Combo239" in row1:
                 config_path = COUNTY_CONFIGS_FOLDER / "VENTURA_ACCESS_EXPORT.json"
                 if config_path.exists():
-                    return json.loads(config_path.read_text()), config_path
+                    return json.loads(config_path.read_text(encoding="utf-8")), config_path
         # Fallback: try county-based config
         return None, None
 
@@ -1655,11 +1655,11 @@ def detect_xls_format(file_path):
                 # Try county-specific state form config
                 config_path = COUNTY_CONFIGS_FOLDER / f"{county}_51-049_Rev_10-24.json"
                 if config_path.exists():
-                    return json.loads(config_path.read_text()), config_path
+                    return json.loads(config_path.read_text(encoding="utf-8")), config_path
                 # Try LA config as fallback (same state form)
                 config_path = COUNTY_CONFIGS_FOLDER / "LOS ANGELES_51-049_Rev_10-24.json"
                 if config_path.exists():
-                    config = json.loads(config_path.read_text())
+                    config = json.loads(config_path.read_text(encoding="utf-8"))
                     config["format_type"] = "xlsx_state_form"
                     return config, config_path
         wb.close()
@@ -1979,7 +1979,7 @@ for input_file in files:
         file_page_folder = page_output_folder / input_file.stem
         file_page_folder.mkdir(exist_ok=True)
         page_file = file_page_folder / "page_001.json"
-        page_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        page_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         total_commodities = len(data.get("commodities", []))
         log(f"  TOTAL: {total_commodities} commodities")
         log(f"\n  Done. Run cpcMerge.py to combine into final JSON.")
@@ -2021,7 +2021,7 @@ for input_file in files:
         log(f"  County config: loaded ({config_file.name})")
         if form_revision and not county_config.get("form_revision"):
             county_config["form_revision"] = form_revision
-            config_file.write_text(json.dumps(county_config, indent=2, ensure_ascii=False))
+            config_file.write_text(json.dumps(county_config, indent=2, ensure_ascii=False), encoding="utf-8")
             log(f"  Form revision recorded in config: {form_revision}")
     else:
         if form_revision:
@@ -2034,7 +2034,7 @@ for input_file in files:
         county_config = generate_county_config(county, pdf_file, page1_text, sorted(all_table_names))
         if form_revision:
             county_config["form_revision"] = form_revision
-        new_config_file.write_text(json.dumps(county_config, indent=2, ensure_ascii=False))
+        new_config_file.write_text(json.dumps(county_config, indent=2, ensure_ascii=False), encoding="utf-8")
         config_file = new_config_file
         log(f"  County config: CREATED — saved to county_configs/{config_file.name}")
         log(f"  NOTE: Review county_configs/{config_file.name} before processing more {county} CPCs.")
@@ -2050,7 +2050,7 @@ for input_file in files:
             data = extract_page(page, county_config)
             clean_commodities(data)
             page_file = pdf_page_folder / f"page_{page_num:03d}.json"
-            page_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+            page_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
             count = len(data.get("commodities", []))
             page_commodity_counts.append(count)
 

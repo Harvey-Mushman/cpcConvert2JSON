@@ -36,7 +36,7 @@ def load_gold_standard():
     if not GOLD_STANDARD_FILE.exists():
         print(f"ERROR: {GOLD_STANDARD_FILE} not found.")
         exit()
-    return json.loads(GOLD_STANDARD_FILE.read_text())
+    return json.loads(GOLD_STANDARD_FILE.read_text(encoding="utf-8"))
 
 
 def load_county_config(county, gold):
@@ -46,7 +46,7 @@ def load_county_config(county, gold):
     if not path.exists():
         return None, None
 
-    county_cfg = json.loads(path.read_text())
+    county_cfg = json.loads(path.read_text(encoding="utf-8"))
 
     # Start with a copy of gold standard, then overlay county-specific values
     merged = json.loads(json.dumps(gold))  # deep copy
@@ -168,6 +168,11 @@ def split_amount_and_unit(value, unit_map):
     if m:
         return f"{clean_number(m.group(1))} x {clean_number(m.group(2))}", "Row Ft"
 
+    # Handle "N' row" (feet mark, straight or curly — e.g. Kern "1,000’ row")
+    m = re.match(r"^([\d,.]+)\s*['’′]\s*rows?$", value, re.IGNORECASE)
+    if m:
+        return clean_number(m.group(1)), "Row Ft"
+
     # Handle "N-M GAL POTS"
     m = re.match(r'^([\d,-]+)\s+(GAL)\s+(POTS?)', value, re.IGNORECASE)
     if m:
@@ -185,6 +190,28 @@ def split_amount_and_unit(value, unit_map):
         return clean_number(value), ""
 
     return value, ""
+
+
+_CONTRACTION_SUFFIXES = {"s", "t", "d", "m", "ll", "re", "ve"}
+
+
+def title_case_name(text):
+    """Title-case a commodity/variety name without str.title()'s apostrophe bug.
+    Curly apostrophes become straight. Possessives/contractions stay lowercase
+    ("Buddha's Hand"); other apostrophe words keep the capital ("O'Henry", "D'Anjou")."""
+    text = text.replace("’", "'").replace("`", "'")
+
+    def fix_word(m):
+        word = m.group(0)
+        head, sep, tail = word.partition("'")
+        head = head[:1].upper() + head[1:].lower()
+        if not sep:
+            return head
+        if tail.lower() in _CONTRACTION_SUFFIXES:
+            return head + sep + tail.lower()
+        return head + sep + tail[:1].upper() + tail[1:].lower()
+
+    return re.sub(r"[^\W\d_]+(?:'[^\W\d_]+)?", fix_word, text)
 
 
 def normalize_month(text):
@@ -450,7 +477,7 @@ def normalize_commodity(comm, config):
     for fld in ("commodity", "variety"):
         val = result.get(fld, "")
         if val:
-            result[fld] = val.title()
+            result[fld] = title_case_name(val)
 
     # Normalize commodity names (plural → singular, etc.)
     name_map = config.get("commodity_name_map", {})
@@ -585,7 +612,7 @@ else:
 
 for json_file in files:
     print(f"\nNormalizing: {json_file.name}")
-    data = json.loads(json_file.read_text())
+    data = json.loads(json_file.read_text(encoding="utf-8"))
 
     county = data.get("issuing_county", "UNKNOWN").upper()
     config, config_name = load_county_config(county, gold)
@@ -598,7 +625,7 @@ for json_file in files:
     normalized = normalize_file(data, config)
 
     out_file = NORMALIZED_FOLDER / json_file.name
-    out_file.write_text(json.dumps(normalized, indent=2, ensure_ascii=False))
+    out_file.write_text(json.dumps(normalized, indent=2, ensure_ascii=False), encoding="utf-8")
 
     commodity_count = len(normalized.get("commodities", []))
     print(f"  {commodity_count} commodities -> {out_file.resolve()}")

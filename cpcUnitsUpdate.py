@@ -94,7 +94,7 @@ def scan_and_update():
     unknown_units = {}   # raw_value → list of (file, field, index)
     case_fixes = {}      # raw_value → canonical_name (auto-fix, no prompt needed)
     for json_file in all_files:
-        data = json.loads(json_file.read_text())
+        data = json.loads(json_file.read_text(encoding="utf-8"))
         for idx, comm in enumerate(data.get("commodities", [])):
             for field in ("amount_unit", "production_unit"):
                 val = comm.get(field, "").strip()
@@ -121,9 +121,9 @@ def scan_and_update():
         for old_val, canonical in sorted(case_fixes.items()):
             print(f"  \"{old_val}\" → \"{canonical}\"")
             for json_file, field, idx in unknown_units.pop(old_val, []):
-                data = json.loads(json_file.read_text())
+                data = json.loads(json_file.read_text(encoding="utf-8"))
                 data["commodities"][idx][field] = canonical
-                json_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+                json_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if not unknown_units:
         print("\nAll units are valid. No updates needed.")
@@ -148,9 +148,9 @@ def scan_and_update():
         for json_file, field, idx in locations:
             if json_file not in files_updated:
                 files_updated.add(json_file)
-            data = json.loads(json_file.read_text())
+            data = json.loads(json_file.read_text(encoding="utf-8"))
             data["commodities"][idx][field] = new_val
-            json_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+            json_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"\nUpdated {len(files_updated)} normalized file(s).")
     print("Units update complete.")
