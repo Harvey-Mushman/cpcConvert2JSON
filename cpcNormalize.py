@@ -192,6 +192,32 @@ def split_amount_and_unit(value, unit_map):
     return value, ""
 
 
+def _find_separator(text, sep_pattern):
+    """First match of a separator pattern that is not inside parentheses, or None."""
+    for m in re.finditer(sep_pattern, text):
+        if text.count("(", 0, m.start()) <= text.count(")", 0, m.start()):
+            return m
+    return None
+
+
+def _split_off_variety(result, sep_patterns):
+    """Split commodity at the first separator found (patterns tried in order).
+    The split-off piece is prepended to any existing variety. Returns True if split."""
+    commodity = result.get("commodity", "")
+    for sep in sep_patterns:
+        m = _find_separator(commodity, sep)
+        if m:
+            split_variety = commodity[m.end():].strip()
+            result["commodity"] = commodity[:m.start()].strip()
+            existing_variety = result.get("variety", "").strip()
+            if existing_variety:
+                result["variety"] = f"{split_variety} {existing_variety}"
+            else:
+                result["variety"] = split_variety
+            return True
+    return False
+
+
 _CONTRACTION_SUFFIXES = {"s", "t", "d", "m", "ll", "re", "ve"}
 
 
@@ -412,40 +438,20 @@ def normalize_commodity(comm, config):
             r'\s*[-,]\s*' + re.escape(suffix) + r'\s*$', '',
             result.get("commodity", ""), flags=re.IGNORECASE).strip()
 
-    # Split commodity on separator (dash, slash, comma)
-    # If variety already exists, prepend the split-off piece to preserve data
-    commodity = result.get("commodity", "")
-    for sep in (r'\s*-\s+', r'\s*/\s*', r'\s*,\s*'):
-        m = re.search(sep, commodity)
-        if m:
-            split_variety = commodity[m.end():].strip()
-            result["commodity"] = commodity[:m.start()].strip()
-            existing_variety = result.get("variety", "").strip()
-            if existing_variety:
-                result["variety"] = f"{split_variety} {existing_variety}"
-            else:
-                result["variety"] = split_variety
-            break
+    # Split commodity on separator (dash, comma) until none remain
+    # ("Pepper, Bell - X" splits twice). No slash here: cpcConvert already split
+    # on slash in files that use it as the separator; anywhere else it means
+    # "or" ("Dandelion/Chicory").
+    while _split_off_variety(result, (r'\s*-\s+', r'\s*,\s*')):
+        pass
 
     # Promote variety to commodity when commodity is just a category name
     drop_names = {n.strip().lower() for n in config.get("drop_empty_commodity_names", [])}
     if result.get("commodity", "").strip().lower() in drop_names and result.get("variety", "").strip():
         result["commodity"] = result["variety"].strip()
         result["variety"] = ""
-
-    # Re-split after promotion (e.g., promoted variety "Orange / Valencia" needs splitting)
-    commodity = result.get("commodity", "")
-    for sep in (r'\s*-\s+', r'\s*/\s*', r'\s*,\s*'):
-        m = re.search(sep, commodity)
-        if m:
-            split_variety = commodity[m.end():].strip()
-            result["commodity"] = commodity[:m.start()].strip()
-            existing_variety = result.get("variety", "").strip()
-            if existing_variety:
-                result["variety"] = f"{split_variety} {existing_variety}"
-            else:
-                result["variety"] = split_variety
-            break
+        # Re-split the promoted value (e.g. "Orange / Valencia")
+        _split_off_variety(result, (r'\s*-\s+', r'\s*/\s*', r'\s*,\s*'))
 
     # Strip redundant "Nursery Stock" from commodity when both units are plant-based
     nursery_units = set(config.get("nursery_stock_units", []))

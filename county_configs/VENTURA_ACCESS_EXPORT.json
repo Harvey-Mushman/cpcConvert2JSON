@@ -3,7 +3,7 @@
   "generated_date": "2026-03-29",
   "generated_with_model": "claude-sonnet-4-6",
   "format_type": "xls_access_export",
-  "notes": "Ventura County Access database export format (.xls). All certificate data is in row 0 with positional columns. Commodities start at row 4 in columns 24-29. Row 1 has internal field names. Row 3 and row 25 have commodity column headers (page-break markers). Dates are Excel serial numbers. Production sites in cols 14-18 (up to 5, N/A = empty). Storage locations in cols 20 and 22 (N/A = empty). Col 19 appears unused. Col 21 appears to be authorized counties count or months.",
+  "notes": "Ventura County Access database export format (.xls). All certificate data is in row 0 with positional columns. Commodities start at row 4 in columns 24-29. Row 1 has internal field names. Row 3 has the commodity column headers; Access repeats that row at every report page break (row 25, then every 32 rows), so repeats are detected by matching row 3's labels, not by row number. Dates are Excel serial numbers. Production sites in cols 14-18 (up to 5, N/A = empty). Storage locations in cols 20 and 22 (N/A = empty). Col 19 appears unused. Col 21 appears to be authorized counties count or months.",
 
   "sheet_name": "Crops",
 
@@ -31,7 +31,7 @@
   "skip_value": "N/A",
 
   "commodity_start_row": 4,
-  "commodity_header_rows": [3, 25],
+  "commodity_header_row": 3,
   "commodity_column_map": {
     "24": "row_number",
     "25": "commodity",

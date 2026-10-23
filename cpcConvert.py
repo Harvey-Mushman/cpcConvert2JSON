@@ -65,25 +65,82 @@ def normalize(text):
         return ""
     return re.sub(r'\s+', ' ', str(text)).strip()
 
-def clean_commodities(data):
-    """Universal post-extraction cleanup for commodity fields across all counties."""
-    for comm in data.get("commodities", []):
-        # Strip leading non-letter characters (^, (, digits, etc.)
+# End-of-commodity-list marker printed by many counties, e.g. "LAST ENTRY - NOTHING
+# VALID BELOW THIS FINAL LINE", "*** LAST ENTRY", "END OF ENTRY". Spaces optional
+# because PDFs often omit space characters between words.
+END_OF_LIST_RE = re.compile(r'LAST\s*ENTRY|NOTHING\s*VALID\s*BELOW|END\s*OF\s*ENTRY', re.IGNORECASE)
+
+_VARIETY_SEPARATORS = {
+    "comma": r'\s*,\s*',
+    "dash":  r'\s*-\s+',
+    "slash": r'\s*/\s*',
+}
+
+
+def _find_separator(text, sep):
+    """First match of a separator that is not inside parentheses, or None."""
+    for m in re.finditer(_VARIETY_SEPARATORS[sep], text):
+        if text.count("(", 0, m.start()) <= text.count(")", 0, m.start()):
+            return m
+    return None
+
+
+_END_OF_LIST_WORDS = {"LAST", "ENTRY", "NOTHING", "VALID", "BELOW", "THIS", "FINAL", "LINE", "END", "OF"}
+
+
+def _is_end_of_list_row(comm):
+    """True only when the row holds nothing but marker words — a real crop with
+    marker text bled into one cell is kept (and warned about by the caller)."""
+    text = " ".join(str(v) for v in comm.values())
+    words = re.findall(r'[A-Za-z]+', text.upper())
+    return bool(END_OF_LIST_RE.search(text)) and set(words) <= _END_OF_LIST_WORDS
+
+
+def clean_commodities(pages):
+    """Universal post-extraction cleanup for commodity fields across all counties.
+    Takes every page of one CPC so the commodity/variety separator is chosen per file."""
+    # Drop rows that are the end-of-list marker, not a crop
+    for data in pages:
+        if "commodities" in data:
+            kept = [c for c in data["commodities"] if not _is_end_of_list_row(c)]
+            if len(kept) != len(data["commodities"]):
+                log(f"  Dropped {len(data['commodities']) - len(kept)} end-of-list marker row(s)", also_print=False)
+            data["commodities"] = kept
+
+    rows = [comm for data in pages for comm in data.get("commodities", [])]
+    for comm in rows:
+        if END_OF_LIST_RE.search(" ".join(str(v) for v in comm.values())):
+            log(f"  WARNING: End-of-list marker text inside crop row {comm.get('commodity', '')!r} — review this file.")
+
+    # Strip leading non-letter characters (^, (, digits, etc.)
+    for comm in rows:
         for fld in ("commodity", "variety"):
             val = comm.get(fld, "")
             if val:
                 comm[fld] = re.sub(r'^[^A-Za-z]+', '', val).strip()
 
-        # Split commodity/variety on separator (dash, slash, comma) when variety is empty
-        if not comm.get("variety", "").strip():
-            commodity = comm.get("commodity", "")
-            for sep in (r'\s*-\s+', r'\s*/\s*', r'\s*,\s*'):
-                m = re.search(sep, commodity)
-                if m:
-                    comm["commodity"] = commodity[:m.start()].strip()
-                    comm["variety"] = commodity[m.end():].strip()
-                    break
-    return data
+    # Split "commodity<sep>variety" when the variety column is empty. Each
+    # producer writes these one way ("APPLE, FUJI", "Kale - Green", "Avocado / Hass"),
+    # so the file's most common separator is tried first. Comma and dash always
+    # separate; a slash only when it is the file's own separator — elsewhere it
+    # means "or" ("PANSY/VIOLA MIX", "CHARD, YELLOW/ORANGE").
+    unsplit = [c for c in rows if not c.get("variety", "").strip()]
+    counts = {sep: sum(1 for c in unsplit if _find_separator(c.get("commodity", ""), sep))
+              for sep in _VARIETY_SEPARATORS}
+    dominant = max(counts, key=counts.get)  # ties keep dict order: comma, dash, slash
+    order = [dominant] + [s for s in ("comma", "dash") if s != dominant]
+    if counts[dominant]:
+        log(f"  Commodity/variety separator: {dominant} ({counts})", also_print=False)
+
+    for comm in unsplit:
+        commodity = comm.get("commodity", "")
+        for sep in order:
+            m = _find_separator(commodity, sep)
+            if m:
+                comm["commodity"] = commodity[:m.start()].strip()
+                comm["variety"] = commodity[m.end():].strip()
+                break
+    return pages
 
 
 def clean_json_response(raw):
@@ -1226,6 +1283,8 @@ def extract_commodities_by_char_position(page, config):
                 break
 
             full_text = ''.join(ch['text'] for ch in line_chs).strip()
+            if END_OF_LIST_RE.search(full_text):
+                break
             if stop_patterns and any(sp in full_text for sp in stop_patterns):
                 break
 
@@ -1741,23 +1800,40 @@ def extract_xls_access_export(file_path, config):
 
     # Extract commodities from rows 4+
     comm_col_map = config.get("commodity_column_map", {})
-    header_rows = set(config.get("commodity_header_rows", [3, 25]))
     start_row = config.get("commodity_start_row", 4)
     commodities = []
+    row_numbers = []
+
+    crop_col = 25
+    number_col = None
+    for col_str, field_name in comm_col_map.items():
+        if field_name == "commodity":
+            crop_col = int(col_str)
+        elif field_name == "row_number":
+            number_col = int(col_str)
+
+    def _row_values(r):
+        return [str(sheet.cell(r, int(c)).value or "").strip().upper()
+                for c in comm_col_map if int(c) < sheet.ncols]
+
+    # Access repeats the column-header row at every report page break, and
+    # where the breaks fall depends on the file's length. Capture the labels
+    # from the first header row and skip any later row that matches them.
+    header_row = config.get("commodity_header_row",
+                            config.get("commodity_header_rows", [3])[0])
+    header_labels = _row_values(header_row)
 
     for row_idx in range(start_row, sheet.nrows):
-        # Skip commodity header repeat rows
-        if row_idx in header_rows:
+        if _row_values(row_idx) == header_labels:
+            log(f"    Skipped repeated column header at row {row_idx}", also_print=False)
             continue
-        # Check if row has commodity data (col 25 = crop name)
-        crop_col = 25
-        for col_str in comm_col_map:
-            if comm_col_map[col_str] == "commodity":
-                crop_col = int(col_str)
-                break
         crop_value = str(sheet.cell(row_idx, crop_col).value or "").strip()
         if not crop_value:
             continue
+        if number_col is not None:
+            m = re.match(r"^(\d+):?$", str(sheet.cell(row_idx, number_col).value or "").strip())
+            if m:
+                row_numbers.append(int(m.group(1)))
 
         entry = {}
         for col_str, field_name in comm_col_map.items():
@@ -1790,6 +1866,13 @@ def extract_xls_access_export(file_path, config):
     result.setdefault("certified_copies_made", "")
 
     log(f"  Extracted {len(commodities)} commodities from Access export")
+
+    # Integrity check: Access numbers each crop "1:", "2:", ... — the extracted
+    # rows must be exactly 1..N with no gaps, duplicates, or unnumbered rows.
+    if number_col is not None and row_numbers != list(range(1, len(commodities) + 1)):
+        log(f"  WARNING: Crop numbering mismatch — {len(commodities)} rows extracted, "
+            f"{len(row_numbers)} numbered (last: {row_numbers[-1] if row_numbers else 'none'}). "
+            f"Header/footer rows may have leaked in or crops were dropped. Review this file.")
     return result
 
 def extract_xlsx_state_form(file_path, config):
@@ -1973,7 +2056,7 @@ for input_file in files:
             log(f"  ERROR: Unknown format_type '{format_type}'. Skipping.")
             continue
 
-        clean_commodities(data)
+        clean_commodities([data])
 
         # XLS files produce a single output (no pages)
         file_page_folder = page_output_folder / input_file.stem
@@ -2045,14 +2128,17 @@ for input_file in files:
     page_commodity_counts = []
 
     with pdfplumber.open(pdf_file) as pdf:
+        pages = []
         for page_num, page in enumerate(pdf.pages, start=1):
             log(f"  Page {page_num}/{total_pages}: extracting...")
-            data = extract_page(page, county_config)
-            clean_commodities(data)
-            page_file = pdf_page_folder / f"page_{page_num:03d}.json"
-            page_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-            count = len(data.get("commodities", []))
-            page_commodity_counts.append(count)
+            pages.append(extract_page(page, county_config))
+
+    # Clean all pages together so file-level patterns (e.g. separator) are consistent
+    clean_commodities(pages)
+    for page_num, data in enumerate(pages, start=1):
+        page_file = pdf_page_folder / f"page_{page_num:03d}.json"
+        page_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        page_commodity_counts.append(len(data.get("commodities", [])))
 
     log(f"\n  --- COMMODITY COUNT PER PAGE ---")
     total_commodities = 0
